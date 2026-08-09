@@ -1,0 +1,6 @@
+.env
+server
+tmp/
+*.exe
+Sclera
+Sclera.pub
