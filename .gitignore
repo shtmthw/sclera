@@ -1,6 +1,4 @@
 .env
-server
+/server
 tmp/
 *.exe
-Sclera
-Sclera.pub
