@@ -7,6 +7,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/mattthew/sclera/internal/db"
+	"github.com/mattthew/sclera/internal/server"
 )
 
 func main() {
@@ -21,6 +22,8 @@ func main() {
 		log.Fatal(err)
 	}
 	defer pool.Close()
+
+	server.RunServer(pool)
 
 	fmt.Println("Sclera server starting...")
 }
