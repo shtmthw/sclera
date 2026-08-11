@@ -10,18 +10,27 @@ import (
 
 func newServer(mux http.Handler) *http.Server {
 
-	return &http.Server{
+	//takes the handler and assigns the server with it.
+	httpServer := http.Server{
 		Addr:    ":8080",
 		Handler: mux,
 	}
+
+	pointerHttpServer := &httpServer
+
+	return pointerHttpServer
 }
 
 func RunServer(pool *pgxpool.Pool) {
+	//creates the router
 	mux := http.NewServeMux()
 
+	//assigns the mux router/ServeMux ( has .HandleFunc within it ) to connect the endpoints to the handlerfuncs
 	routes.RegisterRoutes(mux, pool)
 
+	//creates the server and hosts the mux handler to the provided port.
 	server := newServer(mux)
 
+	//logs any error when running the server.
 	log.Fatal(server.ListenAndServe())
 }

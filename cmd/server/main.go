@@ -27,3 +27,5 @@ func main() {
 
 	fmt.Println("Sclera server starting...")
 }
+
+//add "/" and improvise a postgre schema to hold the users table and data.
