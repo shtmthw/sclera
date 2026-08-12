@@ -26,7 +26,7 @@ func RunServer(pool *pgxpool.Pool) {
 	mux := http.NewServeMux()
 
 	//assigns the mux router/ServeMux ( has .HandleFunc within it ) to connect the endpoints to the handlerfuncs
-	routes.RegisterRoutes(mux, pool)
+	routes.RegisterUserRoutes(mux, pool)
 
 	//creates the server and hosts the mux handler to the provided port.
 	server := newServer(mux)

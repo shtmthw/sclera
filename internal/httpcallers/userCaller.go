@@ -16,7 +16,7 @@ func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		email := r.URL.Query().Get("email")
-		stat, user, err := handlers.GetUserData(ctx, pool, email)
+		stat, user, err := handlers.HandleGetUserData(ctx, pool, email)
 
 		w.Header().Set("Content-Type", "application/json")
 

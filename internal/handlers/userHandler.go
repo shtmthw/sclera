@@ -11,7 +11,7 @@ import (
 
 var NoUserFoundErr = errors.New("no user with this email found in database")
 
-func GetUserData(ctx context.Context, pool *pgxpool.Pool, email string) (bool, models.User, error) {
+func HandleGetUserData(ctx context.Context, pool *pgxpool.Pool, email string) (bool, models.User, error) {
 	var userExists int
 	var user models.User
 
