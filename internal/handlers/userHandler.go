@@ -9,7 +9,7 @@ import (
 	"github.com/mattthew/sclera/internal/models"
 )
 
-var NoUserFoundErr = errors.New("no user with this email found in database")
+var ErrNoUserFound = errors.New("no user with this email found in database")
 
 func HandleGetUserData(ctx context.Context, pool *pgxpool.Pool, email string) (bool, models.User, error) {
 	var userExists int
@@ -33,7 +33,7 @@ func HandleGetUserData(ctx context.Context, pool *pgxpool.Pool, email string) (b
 
 	if userExists == 0 {
 		log.Println("No user exists with provided email")
-		return false, models.User{}, NoUserFoundErr
+		return false, models.User{}, ErrNoUserFound
 	}
 
 	log.Printf("Succesfully fetched user %s", user.Name)

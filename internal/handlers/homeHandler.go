@@ -1,6 +1,6 @@
 package handlers
 
-func handleHomepage() {
+func HandleHomepage() {
 	//ci cd implementaion for the app
 
 	//bla bla

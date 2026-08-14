@@ -39,8 +39,19 @@ func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request
 
 		log.Println("user data has been fetched, stat: ", stat)
 
-		json.NewEncoder(w).Encode(user)
-		w.Write([]byte(response.String()))
+		jsonErr := json.NewEncoder(w).Encode(user)
+
+		if jsonErr != nil {
+			log.Println("error occured while trying to send json to header, error: ", jsonErr)
+			return
+		}
+
+		_, writeErr := w.Write([]byte(response.String()))
+
+		if writeErr != nil {
+			log.Println("error occured while trying to write user's data to response, error: ", writeErr)
+			return
+		}
 
 	}
 }

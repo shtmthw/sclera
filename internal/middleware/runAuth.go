@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"fmt"
+	"encoding/json"
 	"log"
 	"net/http"
 
@@ -13,16 +13,29 @@ func CheckJwtToken(next http.HandlerFunc) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		tokenString := r.Header.Get("Authorization")
 		if tokenString == "" {
+
 			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprint(w, "Missing authorization header")
+			jsonErr := json.NewEncoder(w).Encode(map[string]string{"error": "missing authorization token"})
+
+			//this is fucking ridicolous
+			if jsonErr != nil {
+				log.Println("error writing unauthorized response:", jsonErr)
+			}
 			return
 		}
 		tokenString = tokenString[len("Bearer "):]
 
 		err := authentication.VerifyToken(tokenString)
 		if err != nil {
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprint(w, "Invalid token")
+			writeErr := json.NewEncoder(w).Encode(map[string]string{
+				"error": "invalid token",
+			})
+
+			//this is fucking ridicolous too..
+			if writeErr != nil {
+				log.Println("error writing unauthorized response:", writeErr)
+			}
+
 			log.Println("error in jwt auth, err: ", err)
 			return
 		}
