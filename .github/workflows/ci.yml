@@ -22,7 +22,7 @@ jobs:
           cache: true # Automatically caches Go modules and build caches
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6 # A multistep linter/quality check for the codebase installed within the VM  
+        uses: golangci/golangci-lint-action@v9 # A multistep linter/quality check for the codebase installed within the VM  
                                                # checks the syntax, unused vars, funcs, recommends better coding approaches
                                                # pretty much ensures the "quality of life" but for code.
         with:
