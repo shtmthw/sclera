@@ -1,0 +1,64 @@
+name: Go CI Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  # Stage 1: Quality Control (Linting & Security)
+  quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest # assigns a linux VM
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4 # clones the code to the assigned VM
+
+      - name: Set up Go
+        uses: actions/setup-go@v5 # sets up the intented go version into the VM
+        with:
+          go-version: '1.26.5'
+          cache: true # Automatically caches Go modules and build caches
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6 # A multistep linter/quality check for the codebase installed within the VM  
+                                               # checks the syntax, unused vars, funcs, recommends better coding approaches
+                                               # pretty much ensures the "quality of life" but for code.
+        with:
+          version: latest
+
+      - name: Run Govulncheck # A package from the go team that checks if the packages used within the app includes any  
+                              # publically declared vunuriblities, and marks it as urgent if its being used realtime in the code.
+                              # ( only flags it if YOUR code actually calls the vulnerable )
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./... 
+
+  # Stage 2: Test & Build
+  test-and-build:
+    name: Test and Build
+    needs: quality # Only runs if linting and security steps pass
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache: true
+
+      - name: Run Unit Tests
+        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./... # Tests the app thorougly, checks for race condition bugs and
+                                                                                 # which parts of my code were actually executed while my tests ran  
+                                                                                 # after parsing the output file (yourself) into a html.
+                                                                                 # Also this test downloads all the dependencies of the app 
+                                                                                 # and test all the files of the whole codebase.
+
+      - name: Build Binary
+        run: go build -v -o dist/main . # Builds the current codebase it is placed on
+                                        # and outputs the binary into the dist/main file.
+
