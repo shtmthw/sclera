@@ -25,7 +25,7 @@ func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request
 			http.Error(w, "error finding user", http.StatusInternalServerError)
 			return
 		}
-		if errors.Is(err, handlers.NoUserFoundErr) {
+		if errors.Is(err, handlers.ErrNoUserFound) {
 
 			log.Println("No user with this exists in the database, stat: ", stat)
 			http.Error(w, "The email id has not been used to create an user.", http.StatusBadRequest)
