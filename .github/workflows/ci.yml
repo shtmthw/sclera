@@ -15,27 +15,25 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4 # clones the code to the assigned VM
 
-      - name: Run golangci-lint  # A multistep linter/quality check for the codebase installed within the VM  
-                                  # checks the syntax, unused vars, funcs, recommends better coding approaches 
-                                    # pretty much ensures the "quality of life" but for code.
-        
+      - name: Set up Go
+        uses: actions/setup-go@v5 # sets up the intented go version into the VM
+        with:
+          go-version: '1.26.6'
+          cache: true # Automatically caches Go modules and build caches
 
-        run: |
-          if ! command -v golangci-lint &> /dev/null; then
-            echo "Installing golangci-lint locally..."
-            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v2.12.2
-          fi
-          $(go env GOPATH)/bin/golangci-lint run ./...
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9 # A multistep linter/quality check for the codebase installed within the VM  
+                                               # checks the syntax, unused vars, funcs, recommends better coding approaches
+                                               # pretty much ensures the "quality of life" but for code.
+        with:
+          version: latest
 
       - name: Run Govulncheck # A package from the go team that checks if the packages used within the app includes any  
                               # publically declared vunuriblities, and marks it as urgent if its being used realtime in the code.
                               # ( only flags it if YOUR code actually calls the vulnerable )
         run: |
-          if ! command -v govulncheck &> /dev/null; then
-            echo "Installing govulncheck locally..."
-            go install golang.org/x/vuln/cmd/govulncheck@latest
-          fi
-          $(go env GOPATH)/bin/govulncheck ./...  
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./... 
 
   # Stage 2: Test & Build
   test-and-build:
@@ -47,9 +45,16 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.6'
+          cache: true
+
       - name: Run Unit Tests
         env:
           CGO_ENABLED: '1'
+
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./... # Tests the app thorougly, checks for race condition bugs and
                                                                                  # which parts of my code were actually executed while my tests ran  
                                                                                  # after parsing the output file (yourself) into a html.
@@ -59,6 +64,7 @@ jobs:
       - name: Build Binary
         env:
           CGO_ENABLED: '1'
+
         run: go build -v -o dist/main ./cmd/server # Builds the current codebase it is placed on
                                         # and outputs the binary into the dist/main file.
 
