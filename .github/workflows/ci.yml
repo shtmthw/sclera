@@ -59,7 +59,7 @@ jobs:
 
       - name: Run Unit Tests
         env:
-          CGO_ENABLED: '0'
+          CGO_ENABLED: '1'
 
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./... # Tests the app thorougly, checks for race condition bugs and
                                                                                  # which parts of my code were actually executed while my tests ran  
@@ -69,7 +69,7 @@ jobs:
 
       - name: Build Binary
         env:
-          CGO_ENABLED: '0'
+          CGO_ENABLED: '1'
 
         run: go build -v -o dist/main ./cmd/server # Builds the current codebase it is placed on
                                         # and outputs the binary into the dist/main file.
