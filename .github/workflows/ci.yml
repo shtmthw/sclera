@@ -59,6 +59,8 @@ jobs:
                                                                                  # and test all the files of the whole codebase.
 
       - name: Build Binary
+        env:
+          CGO_ENABLED: '1'
         run: go build -v -o dist/main ./cmd/server # Builds the current codebase it is placed on
                                         # and outputs the binary into the dist/main file.
 
