@@ -12,6 +12,7 @@ import (
 	"github.com/mattthew/sclera/internal/handlers"
 )
 
+// random comment to run ci pipeline
 func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
