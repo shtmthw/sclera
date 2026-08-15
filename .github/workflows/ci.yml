@@ -7,89 +7,58 @@ on:
     branches: [ main ]
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: self-hosted
+  # Stage 1: Quality Control (Linting & Security)
+  quality:
+    name: Code Quality & Security
+    runs-on: self-hosted # assigns a linux VM
     steps:
-      - name: Debug Go environment
+      - name: Checkout Code
+        uses: actions/checkout@v4 # clones the code to the assigned VM
+
+      - name: Run golangci-lint  # A multistep linter/quality check for the codebase installed within the VM  
+                                  # checks the syntax, unused vars, funcs, recommends better coding approaches 
+                                    # pretty much ensures the "quality of life" but for code.
+        
+
         run: |
-          echo "HOME=$HOME"
-          go env GOPATH GOMODCACHE GOCACHE
+          if ! command -v golangci-lint &> /dev/null; then
+            echo "Installing golangci-lint locally..."
+            curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.59.1
+          fi
+          $(go env GOPATH)/bin/golangci-lint run ./...
 
-      - uses: actions/checkout@v4
-
-      - name: Configure Go environment
+      - name: Run Govulncheck # A package from the go team that checks if the packages used within the app includes any  
+                              # publically declared vunuriblities, and marks it as urgent if its being used realtime in the code.
+                              # ( only flags it if YOUR code actually calls the vulnerable )
         run: |
-          echo "GOPATH=$HOME/go" >> $GITHUB_ENV
-          echo "GOBIN=$HOME/go/bin" >> $GITHUB_ENV
-          echo "$HOME/go/bin" >> $GITHUB_PATH
-          echo "$HOME/golangci-lint-2.12.2-linux-amd64" >> $GITHUB_PATH
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.6'
-          cache: false   # defaults to $HOME/go/pkg/mod + $HOME/.cache/go-build, already persistent
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Run golangci-lint
-        run: golangci-lint run ./...
-
-  vulncheck:
-    name: Vulnerability Scan
-    runs-on: self-hosted
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure Go environment
-        run: |
-          echo "GOPATH=$HOME/go" >> $GITHUB_ENV
-          echo "GOBIN=$HOME/go/bin" >> $GITHUB_ENV
-          echo "$HOME/go/bin" >> $GITHUB_PATH
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.6'
-          cache: false
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Install govulncheck (only if missing)
-        run: |
-          command -v govulncheck >/dev/null 2>&1 || \
+          if ! command -v govulncheck &> /dev/null; then
+            echo "Installing govulncheck locally..."
             go install golang.org/x/vuln/cmd/govulncheck@latest
+          fi
+          $(go env GOPATH)/bin/govulncheck ./...  
 
-      - name: Run govulncheck
-        run: govulncheck ./...
-
+  # Stage 2: Test & Build
   test-and-build:
     name: Test and Build
-    needs: [lint, vulncheck]
+    needs: quality # Only runs if linting and security steps pass
     runs-on: self-hosted
+    
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure Go environment
-        run: |
-          echo "GOPATH=$HOME/go" >> $GITHUB_ENV
-          echo "$HOME/go/bin" >> $GITHUB_PATH
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.26.6'
-          cache: false
-
-      - name: Download dependencies
-        run: go mod download
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Run Unit Tests
         env:
           CGO_ENABLED: '1'
-        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./... # Tests the app thorougly, checks for race condition bugs and
+                                                                                 # which parts of my code were actually executed while my tests ran  
+                                                                                 # after parsing the output file (yourself) into a html.
+                                                                                 # Also this test downloads all the dependencies of the app 
+                                                                                 # and test all the files of the whole codebase.
 
       - name: Build Binary
         env:
           CGO_ENABLED: '1'
-        run: go build -v -o dist/main ./cmd/server
+        run: go build -v -o dist/main ./cmd/server # Builds the current codebase it is placed on
+                                        # and outputs the binary into the dist/main file.
+
