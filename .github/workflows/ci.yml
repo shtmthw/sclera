@@ -2,15 +2,15 @@ name: Go CI Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 
 jobs:
   # Stage 1: Quality Control (Linting & Security)
   quality:
     name: Code Quality & Security
-    runs-on: ubuntu-latest # assigns a linux VM
+    runs-on: self-hosted # assigns a linux VM
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4 # clones the code to the assigned VM
@@ -39,7 +39,7 @@ jobs:
   test-and-build:
     name: Test and Build
     needs: quality # Only runs if linting and security steps pass
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     
     steps:
       - name: Checkout Code
