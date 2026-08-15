@@ -11,6 +11,11 @@ jobs:
     name: Lint
     runs-on: self-hosted
     steps:
+      - name: Debug Go environment
+        run: |
+          echo "HOME=$HOME"
+          go env GOPATH GOMODCACHE GOCACHE
+
       - uses: actions/checkout@v4
 
       - name: Configure Go environment
@@ -24,6 +29,9 @@ jobs:
         with:
           go-version: '1.26.6'
           cache: false   # defaults to $HOME/go/pkg/mod + $HOME/.cache/go-build, already persistent
+
+      - name: Download dependencies
+        run: go mod download
 
       - name: Run golangci-lint
         run: golangci-lint run ./...
@@ -44,6 +52,9 @@ jobs:
         with:
           go-version: '1.26.6'
           cache: false
+
+      - name: Download dependencies
+        run: go mod download
 
       - name: Install govulncheck (only if missing)
         run: |
@@ -69,6 +80,9 @@ jobs:
         with:
           go-version: '1.26.6'
           cache: false
+
+      - name: Download dependencies
+        run: go mod download
 
       - name: Run Unit Tests
         env:
