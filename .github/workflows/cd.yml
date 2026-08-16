@@ -7,7 +7,7 @@ on:
             - completed
 
 jobs:
-    deploy:
+    deploy-server:
         runs-on: self-hosted
         if: ${{ github.event.workflow_run.conclusion == 'success' }}
         steps: 
@@ -20,7 +20,7 @@ jobs:
           id: meta
           uses: docker/metadata-action@v6
           with: 
-            images: ${{vars.DOCKER_USERNAME}}/sclera
+            images: matthew552/sclera
 
         - name: Log in to Docker Hub
           uses: docker/login-action@v4
