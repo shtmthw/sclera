@@ -11,19 +11,35 @@ jobs:
         runs-on: self-hosted
         if: ${{ github.event.workflow_run.conclusion == 'success' }}
         steps: 
+        
         - name: Check Docker username
           run: | 
             echo "Docker username is: ${{ vars.DOCKER_USERNAME }}"
           
+        - name: Checkout code
+          uses: actions/checkout@v7
+          with:
+            fetch-depth: 0
 
-        - name: Extract Docker image metadata
-          id: meta
-          uses: docker/metadata-action@v6
-          with: 
-            images: matthew552/sclera
-            tags: |
-                 type=raw,value${{ github.event.workflow_run.head_branch }}
-                 type=raw,value=latest,enable=${{ github.event.workflow_run.head_branch == 'main' }}
+        - name: Resolve True Triggering Version
+          id: version_resolver
+          run: |
+            # Fetch the exact commit SHA that completed the CI pipeline
+            TARGET_SHA="${{ github.event.workflow_run.head_sha }}"
+          
+            # Check if this specific commit has a semantic version tag pointing to it
+             RESOLVED_TAG=$(git tag --points-at "$TARGET_SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          
+            if [ -n "$RESOLVED_TAG" ]; then
+                echo "Pipeline was triggered by Git Tag: $RESOLVED_TAG"
+                echo "DEPLOY_TAG=$RESOLVED_TAG" >> $GITHUB_OUTPUT
+                echo "IS_TAG=true" >> $GITHUB_OUTPUT
+            else
+                echo "Pipeline was triggered by standard commit on branch: ${{ github.event.workflow_run.head_branch }}"
+                echo "DEPLOY_TAG=latest" >> $GITHUB_OUTPUT
+                echo "IS_TAG=false" >> $GITHUB_OUTPUT
+            fi
+
 
         - name: Log in to Docker Hub
           uses: docker/login-action@v4
@@ -31,6 +47,18 @@ jobs:
            username: ${{ vars.DOCKER_USERNAME }}
            password: ${{ secrets.DOCKER_PASSWORD }}      
         
+
+        - name: Extract Docker image metadata
+          id: meta
+          uses: docker/metadata-action@v6
+          with: 
+            images: matthew552/sclera
+            tags: |
+             # Injects our safely resolved tag version directly into the build mix
+             type=raw,value=${{ steps.version_resolver.outputs.DEPLOY_TAG }}
+
+
+
         - name: Build and push Docker image
           uses: docker/build-push-action@v7
           with:
