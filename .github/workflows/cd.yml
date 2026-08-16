@@ -1,43 +1,50 @@
 name: Go CD Pipeline
 
 on:
-    workflow_run:
-        workflows: ["Go CI Pipeline"]
-        types:
-            - completed
+  workflow_run:
+    workflows: ["Go CI Pipeline"]
+    types:
+      - completed
 
 jobs:
-    deploy-server:
-        runs-on: self-hosted
-        if: >
-         github.event.workflow_run.conclusion == 'success' &&
-         github.event.workflow_run.event == 'push'&&
-         startsWith(github.event.workflow_run.head_branch, 'v')
+  deploy-server:
+    runs-on: self-hosted
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
 
-        steps: 
+    steps:
 
-        - name: Extract Docker image metadata
-          id: meta
-          uses: docker/metadata-action@v6
-          with: 
-            images: matthew552/sclera
-            tags: |
-                type=semver,pattern={{version}},value=${{ github.event.workflow_run.head_branch }}
-                type=semver,pattern={{major}}.{{minor}},value=${{ github.event.workflow_run.head_branch }}
+      - name: Checkout the exact tagged commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
+      - name: Extract Docker image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: matthew552/sclera
+          flavor: |
+           latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ github.event.workflow_run.head_branch }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ github.event.workflow_run.head_branch }}
 
-        - name: Log in to Docker Hub
-          uses: docker/login-action@v4
-          with:
-           username: ${{ vars.DOCKER_USERNAME }}
-           password: ${{ secrets.DOCKER_PASSWORD }}      
-        
-        - name: Build and push Docker image
-          uses: docker/build-push-action@v7
-          with:
-            push: true
-            tags: ${{ steps.meta.outputs.tags }}
-            annotations: ${{ steps.meta.outputs.annotations }}
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          annotations: ${{ steps.meta.outputs.annotations }}
 
 
         
