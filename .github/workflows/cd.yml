@@ -21,6 +21,11 @@ jobs:
           uses: docker/metadata-action@v6
           with: 
             images: matthew552/sclera
+            tags: |
+                # Dynamically uses github.ref_name when a Git tag is pushed
+                 type=ref,event=tag
+                # Automatically tags 'latest' only on the default branch
+                type=edge,branch=main
 
         - name: Log in to Docker Hub
           uses: docker/login-action@v4
