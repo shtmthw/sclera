@@ -13,7 +13,7 @@ jobs:
     runs-on: self-hosted # assigns a linux VM
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4 # clones the code to the assigned VM
+        uses: actions/checkout@v7 # clones the code to the assigned VM
 
       - name: Check Go
         run: |
@@ -47,15 +47,15 @@ jobs:
     runs-on: self-hosted
     
     steps:
+
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check Go
         run: |
           go version
           go env GOMODCACHE
           go env GOCACHE
-
 
       - name: Run Unit Tests
         env:
