@@ -32,8 +32,10 @@ jobs:
           uses: docker/build-push-action@v7
           with:
             push: ${{ github.event_name != 'pull_request' }}
-            tags: ${{ steps.meta.outputs.tags }}
+            tags: ${{ github.ref_name }}
             annotations: ${{ steps.meta.outputs.annotations }}
 
 
-            # fafafsafsf
+        
+        #after the image getting pushed to hub, make a docker network, run a container, run a postgreSQL container (if no exists in network)
+        #make them talk to eachother and deploy to localhost (my local cloud)
