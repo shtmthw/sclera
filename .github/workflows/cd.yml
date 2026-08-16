@@ -16,7 +16,7 @@ jobs:
           id: meta
           uses: docker/metadata-action@v6
           with: 
-            images: ${{vars.DOCKER_USERNAME}}/scleraServer
+            images: ${{vars.DOCKER_USERNAME}}/sclera
 
         - name: Log in to Docker Hub
           uses: docker/login-action@v4
