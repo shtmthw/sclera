@@ -49,9 +49,11 @@ jobs:
 
         #todo
         
+        #fix github pushing err that assigns of same annotain ( v0.0.0 ) without pushing the imagae first
+
         #understand if a 0.0 ver is acc needed or not by reading claudes explanation, and take action accordingly
         
-        #then fa
+        #then faafsafsaafasfasfass
 
         #after the image getting pushed to hub, make a docker network, run a container, run a postgreSQL container (if no exists in network)
         #make them talk to eachother and deploy to localhost (my local cloud)
