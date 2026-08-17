@@ -15,7 +15,7 @@ func CheckJwtToken(next http.HandlerFunc) http.HandlerFunc {
 		if tokenString == "" {
 
 			w.WriteHeader(http.StatusUnauthorized)
-			jsonErr := json.NewEncoder(w).Encode(map[string]string{"error": "missing authorization token"})
+			jsonErr := json.NewEncoder(w).Encode(map[string]string{"error": "missing authorization token (congrats your cd now works)"})
 
 			//this is fucking ridicolous
 			if jsonErr != nil {

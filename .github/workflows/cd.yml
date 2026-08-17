@@ -12,25 +12,32 @@ jobs:
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
-      startsWith(github.event.workflow_run.head_branch, 'v')
+      startsWith(github.event.workflow_run.head_branch, 'v') 
+    # ^ this checks if the head_branch of a git push starts with v or no (if its a version release the head breach would have a v0.0.1 declaration )
+    # if the head_branch isnt starting with a v infront of it, that will mean the head_branch is surely named main ( if it wasnt the ci wont even run )
+    # and the cd gets cancled, becuase the push request is a commit, not a version release
+    # git push origin main (the main here is the head_branch)
 
     steps:
 
       - name: Checkout the exact tagged commit
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
-
+          clean: true
+          ref: ${{ github.event.workflow_run.head_sha }} #is to prevent branch commit code merging with version release,
+          # by only grabbing the sha that causes the cd workflow to trigger, by default acions/checkout@v7 always grabs the latest
+          #commit, that being a commit to the main branch not a version release will also be caught and added into the released codebase.
+          #this here prevents this by only grabbing the sha that caused the cd to trriger and commit the changes and codebase of the version release,
+          
       - name: Extract Docker image metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: matthew552/sclera
+          images: matthew552/sclera #pulls my docker image
           flavor: |
-           latest=false
+           latest=true
           tags: |
             type=semver,pattern={{version}},value=${{ github.event.workflow_run.head_branch }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ github.event.workflow_run.head_branch }}
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
@@ -41,19 +48,13 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
         with:
-          context: .
+          context: . #uses the exisitng Dockerfile into the codebase to build the new versions image and uploads it to docker hub
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           annotations: ${{ steps.meta.outputs.annotations }}
 
-
-        #todo
-        
-        #fix github pushing err that assigns of same annotain ( v0.0.0 ) without pushing the imagae first
-
-        #understand if a 0.0 ver is acc needed or not by reading claudes explanation, and take action accordingly
-        
-        #then
-        
+      
+      - name: Hosting the server
+        run: docker compose up -d
         #after the image getting pushed to hub, make a docker network, run a container, run a postgreSQL container (if no exists in network)
         #make them talk to eachother and deploy to localhost (my local cloud)
