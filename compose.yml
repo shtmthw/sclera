@@ -1,0 +1,29 @@
+services:
+  server:
+    image: matthew552/sclera:latest #make this dynamic, based on the latest image uploaded by the bulder in cd pipeline
+    ports:
+      - "8081:8080"
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      - db
+    networks:
+      - sclera-network
+
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_USER: matthew
+      POSTGRES_PASSWORD: baroimathiwas1Q
+      POSTGRES_DB: scleraDatabase
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - sclera-network
+
+networks:
+  sclera-network:
+
+volumes:
+  postgres-data:
+
