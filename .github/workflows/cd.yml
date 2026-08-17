@@ -47,6 +47,11 @@ jobs:
           annotations: ${{ steps.meta.outputs.annotations }}
 
 
+        #todo
         
+        #understand if a 0.0 ver is acc needed or not by reading claudes explanation, and take action accordingly
+        
+        #then
+
         #after the image getting pushed to hub, make a docker network, run a container, run a postgreSQL container (if no exists in network)
         #make them talk to eachother and deploy to localhost (my local cloud)

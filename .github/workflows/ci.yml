@@ -20,9 +20,12 @@ jobs:
       - name: Check Go
         run: |
           go version
-          go env GOMODCACHE
+          go env GOMODCACHE   
           go env GOCACHE
-
+          
+      #Checks if this returns the dir where GOMODCACHE and GOCACHE should be located, even if the dir/folder hasnt been made yet, 
+      #the command returning the location of the intended dir to hold the cache and module cache, 
+      #is an indicator go ecosys is existing on the runners VM or LM
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9 # A multistep linter/quality check for the codebase installed within the VM  
