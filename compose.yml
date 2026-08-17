@@ -4,7 +4,7 @@ services:
     ports:
       - "8081:8080"
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: postgres://matthew:baroimathiwas1Q@db:5432/scleraDatabase?sslmode=disable
     depends_on:
       - db
     networks:
