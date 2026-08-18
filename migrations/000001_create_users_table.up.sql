@@ -5,6 +5,6 @@ CREATE TABLE sclera.users (
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     age INT NOT NULL,
-    FavouriteTopics TEXT[] NOT NULL,
+    favouriteTopics TEXT[] NOT NULL,
     created_at TIMESTAMP DEFAULT NOW()
 );

@@ -10,14 +10,21 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mattthew/sclera/internal/handlers"
+	"github.com/mattthew/sclera/internal/middleware"
 )
 
 // random comment to run ci pipeline
 func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		email := r.URL.Query().Get("email")
-		stat, user, err := handlers.HandleGetUserData(ctx, pool, email)
+
+		userID, ok := ctx.Value(middleware.UserIDkey).(int)
+		if ok == false {
+			log.Println("No user user id found in the context values")
+			http.Error(w, "No user ID has been found linked to your account.", http.StatusBadRequest)
+			return
+		}
+		stat, user, err := handlers.HandleGetUserData(ctx, pool, userID) // send the user context, database pool and id to check existance
 
 		w.Header().Set("Content-Type", "application/json")
 
@@ -40,6 +47,9 @@ func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request
 
 		log.Println("user data has been fetched, stat: ", stat)
 
+		// must be changed when frontend is added to properly show the userdata struct to the user
+		// the
+
 		jsonErr := json.NewEncoder(w).Encode(user)
 
 		if jsonErr != nil {
@@ -49,10 +59,18 @@ func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request
 
 		_, writeErr := w.Write([]byte(response.String()))
 
+		// must be changed when frontend is added to properly show the userdata struct to the user
+		// this is temporary just to see the user in the html servers page
+
 		if writeErr != nil {
 			log.Println("error occured while trying to write user's data to response, error: ", writeErr)
 			return
 		}
 
 	}
+}
+
+func CallCreateUser() {
+
+	// to be added
 }
