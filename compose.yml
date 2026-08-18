@@ -1,29 +1,43 @@
 services:
   server:
-    image: matthew552/sclera:latest #make this dynamic, based on the latest image uploaded by the bulder in cd pipeline
+    image: matthew552/sclera:latest 
     ports:
-      - "8081:8080"
+      - "8081:8080" 
     environment:
-      DATABASE_URL: postgres://matthew:baroimathiwas1Q@db:5432/scleraDatabase?sslmode=disable
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
     depends_on:
-      - db
+      database:
+        condition: service_healthy
     networks:
       - sclera-network
 
-  db:
+  database:
+  # does not need to be portmapped as this has no need to talk to hosts localhost, and assinging a containter
+  # to a network automatically creates a bridge between the container of that network allowing the containers to comm
+  # database;5432 being hosted thru bridge (the network itself) of this image here,
     image: postgres:latest
     environment:
       POSTGRES_USER: matthew
-      POSTGRES_PASSWORD: baroimathiwas1Q
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: scleraDatabase
+    healthcheck:
+      test: ["cmd", "pg_isready -U matthew -d scleraDatabase"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
     volumes:
-      - postgres-data:/var/lib/postgresql
+      - postgres-data:/var/lib/postgresql/data # postgres-data is a volume stored in my localmachine which takes the data out
+                                               # of the dir /var/lib/postgresql/data in the containers file system, thus
+                                               # even on container restarts or deletion the data presists
     networks:
       - sclera-network
 
-networks:
-  sclera-network:
+networks: # lets you configure networks being used here
+  sclera-network: # both the server and container database uses this network
 
-volumes:
-  postgres-data:
+volumes: # lets you configure volumes being used here
+  postgres-data: # the database cotainer uses this volume to track data
 
