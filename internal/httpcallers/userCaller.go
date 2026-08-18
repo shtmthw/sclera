@@ -19,7 +19,7 @@ func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request
 		ctx := r.Context()
 
 		userID, ok := ctx.Value(middleware.UserIDkey).(int)
-		if ok == false {
+		if !ok {
 			log.Println("No user user id found in the context values")
 			http.Error(w, "No user ID has been found linked to your account.", http.StatusBadRequest)
 			return
