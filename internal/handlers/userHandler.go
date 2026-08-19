@@ -9,7 +9,7 @@ import (
 	"github.com/mattthew/sclera/internal/models"
 )
 
-var ErrNoUserFound = errors.New("no user with this email found in database")
+var ErrNoUserFound = errors.New("no user with this id found in database")
 var ErrUserEmailAlreadyTaken = errors.New("the provided email is already attached to another users data")
 
 func HandleGetUserData(ctx context.Context, pool *pgxpool.Pool, userID int) (bool, models.User, error) {
