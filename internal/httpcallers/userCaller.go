@@ -109,7 +109,7 @@ func CallNewUser() http.HandlerFunc {
 			//if the token do pass the verification
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte("You have arleady logged in."))
+			// w.Write([]byte("You have arleady logged in.")) // fix later
 			return
 		}
 
