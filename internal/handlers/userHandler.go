@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mattthew/sclera/internal/models"
 )
@@ -42,20 +43,25 @@ func HandleGetUserData(ctx context.Context, pool *pgxpool.Pool, userID int) (boo
 
 }
 
-func HandlePushUserData(ctx context.Context, pool *pgxpool.Pool, userdata models.User) (bool, error) {
-
-	database, err := pool.Exec(ctx,
-		`INSERT INTO users (name , email, age, favouriteTopics) VALUES ($1, $2, $3, $4) ON CONFLICT (email) DO NOTHING`,
-		userdata.Name, userdata.Email, userdata.Age, userdata.FavouriteTopics)
+func HandlePushUserData(ctx context.Context, pool *pgxpool.Pool, userdata models.User) (bool, int, error) {
+	var newID int
+	err := pool.QueryRow(ctx,
+		`INSERT INTO users (name , email, age, favouriteTopics) 
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (email) DO NOTHING
+		RETURNING id`,
+		userdata.Name, userdata.Email, userdata.Age, userdata.FavouriteTopics,
+	).Scan(&newID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Println("Email is linked to an existing users data")
+			return false, 0, ErrUserEmailAlreadyTaken
+		}
 		log.Println("Error occured in GetUserData while inserting in users table")
-		return false, err
+		return false, 0, err
 	}
 
-	if database.RowsAffected() == 0 {
-		log.Println("Email is linked to an existing users data")
-		return false, ErrUserEmailAlreadyTaken
-	}
 	log.Println("Successfully created user account")
-	return true, nil
+	return true, newID, nil
+
 }

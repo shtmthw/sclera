@@ -21,8 +21,8 @@ const UserIDkey contextKey = "userID"
 func CheckJwtToken(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		tokenString := r.Header.Get("Authorization")
-		if tokenString == "" {
+		cookie, err := r.Cookie("Authorization")
+		if err != nil {
 
 			w.WriteHeader(http.StatusUnauthorized)
 			jsonErr := json.NewEncoder(w).Encode(map[string]string{"error": "missing authorization token"})
@@ -34,6 +34,9 @@ func CheckJwtToken(next http.HandlerFunc) http.HandlerFunc {
 
 			return
 		}
+
+		tokenString := cookie.Value
+
 		if !strings.HasPrefix(tokenString, "Bearer ") {
 			prefixErr := json.NewEncoder(w).Encode(map[string]string{
 				"error": "invalid prefix",
@@ -43,7 +46,7 @@ func CheckJwtToken(next http.HandlerFunc) http.HandlerFunc {
 			return
 
 		}
-		tokenString = tokenString[len("Bearer "):]
+		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
 		userID, err := authentication.VerifyToken(tokenString)
 

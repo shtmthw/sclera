@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Conditional Form</title>
+</head>
+
+<body>
+    <h1>Submit Your Information</h1>
+    <form action="/createUser" method="POST">
+        <input type="text" name="name" placeholder="Your Name" required>
+        <input type="text" name="email" placeholder="Your email" required>
+        <input type="number" name="age" placeholder="Your age" required>
+        <input type="password" name="password" placeholder="Your password" required>
+        <input type="checkbox" name="items" value="apple"> Apple
+        <input type="checkbox" name="items" value="banana"> Banana
+        <input type="checkbox" name="items" value="cherry"> Cherry
+        <input type="checkbox" name="items" value="date"> Date
+        <input type="checkbox" name="items" value="egg"> Egg
+        <input type="checkbox" name="items" value="fig"> Fig
+        <button type="submit">Submit</button>
+    </form>
+</body>
+
+</html>
+<script>
+    document.querySelectorAll('input[name="items"]').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const checked = document.querySelectorAll('input[name="items"]:checked');
+            document.querySelectorAll('input[name="items"]').forEach(box => {
+                box.disabled = checked.length >= 5 && !box.checked;
+            });
+        });
+    });
+</script>
