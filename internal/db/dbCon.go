@@ -20,7 +20,7 @@ func ConnectDatabase(ctx context.Context) (*pgxpool.Pool, error) {
 		log.Println("Failed connecting of pool")
 		return nil, err
 	}
-
+	// a random change
 	if err := pool.Ping(ctx); err != nil {
 
 		log.Println("Database is inactive")

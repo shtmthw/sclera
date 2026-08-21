@@ -19,14 +19,15 @@ func HandleGetUserData(ctx context.Context, pool *pgxpool.Pool, userID int) (boo
 
 	err := pool.QueryRow(ctx,
 		`WITH fetched AS (
-			SELECT * FROM users WHERE id = $1
+			SELECT * FROM sclera.users WHERE id = $1
 		)
 		SELECT 
 			(SELECT count(*) FROM fetched) as userExists,	
 			(SELECT name FROM fetched) as userName,
 			(SELECT email FROM fetched) as userEmail,
 			(SELECT age FROM fetched) as userAge,
-			(SELECT favouriteTopics FROM fetched) as favouriteTopics`, userID).Scan(&userExists, &user.Name, &user.Email, &user.Age, &user.FavouriteTopics)
+			(SELECT password FROM fetched) as userPassword,
+			(SELECT favouriteTopics FROM fetched) as favouriteTopics`, userID).Scan(&userExists, &user.Name, &user.Email, &user.Age, &user.Password, &user.FavouriteTopics)
 
 	if err != nil {
 		log.Println("Error occured in GetUserData while querying in users table")
@@ -46,11 +47,11 @@ func HandleGetUserData(ctx context.Context, pool *pgxpool.Pool, userID int) (boo
 func HandlePushUserData(ctx context.Context, pool *pgxpool.Pool, userdata models.User) (bool, int, error) {
 	var newID int
 	err := pool.QueryRow(ctx,
-		`INSERT INTO users (name , email, age, favouriteTopics) 
-		VALUES ($1, $2, $3, $4)
+		`INSERT INTO sclera.users (name , email, age, password, favouriteTopics) 
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (email) DO NOTHING
 		RETURNING id`,
-		userdata.Name, userdata.Email, userdata.Age, userdata.FavouriteTopics,
+		userdata.Name, userdata.Email, userdata.Age, userdata.Password, userdata.FavouriteTopics,
 	).Scan(&newID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

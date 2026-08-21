@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mattthew/sclera/internal/authentication"
 	"github.com/mattthew/sclera/internal/handlers"
+	"github.com/mattthew/sclera/internal/hashing"
 	"github.com/mattthew/sclera/internal/middleware"
 	"github.com/mattthew/sclera/internal/models"
 )
@@ -33,7 +34,7 @@ func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		userID, ok := ctx.Value(middleware.UserIDkey).(int)
+		userID, ok := ctx.Value(middleware.UserIDkey).(int) //this .(int) is NOT typecasting the value of type any, it is there to TYPECHECK what the actual type of the type any value is
 		if !ok {
 			throwHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
 			return
@@ -52,10 +53,6 @@ func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request
 		log.Println("user data has been fetched, stat: ", stat)
 
 		var logSB strings.Builder
-		logSB.WriteString(r.Method)
-		logSB.WriteString(" ")
-		logSB.WriteString(r.URL.Path)
-		logSB.WriteString(" -> ")
 		for _, topic := range user.FavouriteTopics {
 			logSB.WriteString("[")
 			logSB.WriteString(topic)
@@ -85,7 +82,7 @@ func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request
 // the form info then gets written to the users request body then passed onto /createUser
 
 // make sure to preload this SOMEHOW, but this is NOT GOOD FOR OPTIMIZATION
-var parseNewAccountTemp = template.Must(template.ParseFiles("../../tempFrontend/userHandling/newAccount.html"))
+var parseNewAccountTemp = template.Must(template.ParseFiles("userHandling/newAccount.html"))
 
 func CallNewUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +106,14 @@ func CallNewUser() http.HandlerFunc {
 			//if the token do pass the verification
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusForbidden)
-			// w.Write([]byte("You have arleady logged in.")) // fix later
+
+			_, writeErr := w.Write([]byte("You have arleady logged in."))
+
+			if writeErr != nil {
+				throwHTTPErrAndLog("error while trying to write response", writeErr, "An error occured while trying to write the response", w, http.StatusInternalServerError)
+				return
+			}
+
 			return
 		}
 
@@ -149,7 +153,7 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 		userData.Email = strings.ToLower(strings.TrimSpace(r.FormValue("email"))) // Normalize email casing
 		ageStr := r.FormValue("age")
 
-		//type cast the age str in to int CAUSE THE FUCKING HTML SENDS type="number" AS STRINGS
+		//typecast the age str into int CAUSE THE FUCKING HTML SENDS type="number" AS STRINGS
 		ageInt, err := strconv.Atoi(ageStr)
 		if err != nil {
 			// This triggers if the input wasn't a valid number string
@@ -157,7 +161,18 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 		userData.Age = ageInt
-		userData.Password = r.FormValue("password")
+
+		//this is the raw password given by user being turned into an hash
+		hash, hashErr := hashing.HashPassword(r.FormValue("password"))
+
+		if hashErr != nil {
+			throwHTTPErrAndLog("failed hashing the password", hashErr, "Your password was not successfully hashed by the server", w, http.StatusInternalServerError)
+			return
+		}
+
+		//submitting the hash into the database
+		userData.Password = hash
+
 		favouriteTopics := r.Form["items"]
 
 		//check if the values in that slice is under the max limit of 5 or no
@@ -207,3 +222,6 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 	}
 
 }
+
+//to do
+// work on /userLogin
