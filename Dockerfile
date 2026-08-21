@@ -14,7 +14,7 @@ COPY . .
 # copies the whole server (the original /Sclera) into the go ecosys helded on linux 
 
 RUN go build -o main ./cmd/server
-#builds the server using the main.go file in ./cmd/main and puts the binary into the folder /Sclera 
+#builds the server using the main.go file in ./cmd/server and puts the binary into the folder /Sclera 
 #so the container now has /Sclera/main, none of the other tools that compiles the server presists.
 
 
@@ -25,6 +25,8 @@ WORKDIR /Sclera
 #makes the Sclera folder within it
 
 COPY --from=builder /Sclera/main .
+COPY --from=builder /Sclera/tempFrontend .
+
 #this takes the /Sclera/main . (all) from the build stage named builder (who knew...) and pastes into the /Sclera, so the current builder has
 # /Sclera/main
 

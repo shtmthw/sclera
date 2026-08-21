@@ -25,7 +25,7 @@ func CreateToken(userID int) (string, error) {
 	return tokenString, nil
 }
 
-func VerifyToken(tokenString string) (float64, error) {
+func VerifyToken(tokenString string) (int, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		return secretKey, nil
 	})
@@ -43,10 +43,11 @@ func VerifyToken(tokenString string) (float64, error) {
 		return 0, fmt.Errorf("invalid map")
 	}
 
-	userID, ok := claims["userID"].(float64) //should be float as jwt MapClaims encodes given int into json as float values.
+	idFloat, ok := claims["userID"].(float64) //should be float as jwt MapClaims encodes given int into json as float values.
 	if !ok {
 		return 0, fmt.Errorf("userID doesnt exist")
 	}
+	userID := int(idFloat)
 
 	return userID, nil
 }
