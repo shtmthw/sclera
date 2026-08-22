@@ -14,29 +14,19 @@ var ErrNoUserFound = errors.New("no user with this id found in database")
 var ErrUserEmailAlreadyTaken = errors.New("the provided email is already attached to another users data")
 
 func HandleGetUserData(ctx context.Context, pool *pgxpool.Pool, userID int) (bool, models.User, error) {
-	var userExists int
 	var user models.User
 
 	err := pool.QueryRow(ctx,
-		`WITH fetched AS (
-			SELECT * FROM sclera.users WHERE id = $1
-		)
-		SELECT 
-			(SELECT count(*) FROM fetched) as userExists,	
-			(SELECT name FROM fetched) as userName,
-			(SELECT email FROM fetched) as userEmail,
-			(SELECT age FROM fetched) as userAge,
-			(SELECT password FROM fetched) as userPassword,
-			(SELECT favouriteTopics FROM fetched) as favouriteTopics`, userID).Scan(&userExists, &user.Name, &user.Email, &user.Age, &user.Password, &user.FavouriteTopics)
+		`SELECT name, email, age, password, favouriteTopics FROM sclera.users WHERE id = $1`, userID).Scan(&user.Name, &user.Email, &user.Age, &user.Password, &user.FavouriteTopics)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Println("No user with this id exists in database")
+			return false, models.User{}, ErrNoUserFound
+		}
+
 		log.Println("Error occured in GetUserData while querying in users table")
 		return false, models.User{}, err
-	}
-
-	if userExists == 0 {
-		log.Println("No user exists with provided id")
-		return false, models.User{}, ErrNoUserFound
 	}
 
 	log.Printf("Succesfully fetched user %s", user.Name)
@@ -64,5 +54,25 @@ func HandlePushUserData(ctx context.Context, pool *pgxpool.Pool, userdata models
 
 	log.Println("Successfully created user account")
 	return true, newID, nil
+
+}
+
+func HandleVerifyUserData(ctx context.Context, pool *pgxpool.Pool, email string) (bool, models.LoggedUser, error) {
+	var userData models.LoggedUser
+
+	err := pool.QueryRow(ctx,
+		`SELECT id, password FROM sclera.users WHERE email = $1`, email).Scan(&userData.Id, &userData.Password) //the hashed password being saved into the userData struct
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Println("No user with this email exists")
+			return false, models.LoggedUser{}, ErrNoUserFound
+		}
+		log.Println("An error occured while to fetch user data")
+		return false, models.LoggedUser{}, err
+	}
+
+	log.Println("Successfully fetched user data")
+	return true, userData, nil
 
 }

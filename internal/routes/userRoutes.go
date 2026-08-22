@@ -12,4 +12,7 @@ func RegisterUserRoutes(mux *http.ServeMux, pool *pgxpool.Pool) {
 	mux.HandleFunc("/getUserData", middleware.CheckJwtToken(httpcallers.CallGetUser(pool)))
 	mux.HandleFunc("/createUser", httpcallers.CallCreateUser(pool))
 	mux.HandleFunc("/newUser", httpcallers.CallNewUser())
+	mux.HandleFunc("/loginUser", httpcallers.CallLoginUser())
+	mux.HandleFunc("/verifyLogin", httpcallers.CallVerifyUser(pool))
+
 }
