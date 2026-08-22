@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mattthew/sclera/internal/authentication"
@@ -83,46 +82,53 @@ func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request
 
 // make sure to preload this SOMEHOW, but this is NOT GOOD FOR OPTIMIZATION
 var parseNewAccountTemp = template.Must(template.ParseFiles("userHandling/newAccount.html"))
+var parseLoginAccountTemp = template.Must(template.ParseFiles("userHandling/loginAccount.html"))
+
+func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, template *template.Template) {
+
+	//check if user has already made an account and if he did show a diff html result
+	//make use one html file is used an dynamically set
+	cookie, err := r.Cookie("Authorization")
+
+	//edge case handling and token verification
+	if err == nil {
+		//if the token doesnt pass the verification, meaning user modified their token themseleves
+		//and a token provided by the server will 100% of the time include the "Bearer " infront of it
+
+		tokenString := strings.TrimPrefix(cookie.Value, "Bearer ")
+
+		_, err := authentication.VerifyToken(tokenString)
+		if err != nil {
+			throwHTTPErrAndLog("provided token is not authorized", err, "The token associated with your account is INVALID", w, http.StatusBadRequest)
+			return
+		}
+
+		//if the token do pass the verification
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusForbidden)
+
+		_, writeErr := w.Write([]byte("You have arleady logged in."))
+
+		if writeErr != nil {
+			throwHTTPErrAndLog("error while trying to write response", writeErr, "An error occured while trying to write the response", w, http.StatusInternalServerError)
+			return
+		}
+
+		return
+	}
+
+	tempParseErrr := template.Execute(w, nil)
+
+	if tempParseErrr != nil {
+		throwHTTPErrAndLog("failed to render signup template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
+		return
+	}
+
+}
 
 func CallNewUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		//check if user has already made an account and if he did show a diff html result
-		//make use one html file is used an dynamically set
-		cookie, err := r.Cookie("Authorization")
-
-		//edge case handling and token verification
-		if err == nil {
-			//if the token doesnt pass the verification, meaning user modified their token themseleves
-			//and a token provided by the server will 100% of the time include the "Bearer " infront of it
-
-			tokenString := strings.TrimPrefix(cookie.Value, "Bearer ")
-
-			_, err := authentication.VerifyToken(tokenString)
-			if err != nil {
-				throwHTTPErrAndLog("provided token is not authorized", err, "The token associated with your account is INVALID", w, http.StatusBadRequest)
-				return
-			}
-
-			//if the token do pass the verification
-			w.Header().Set("Content-Type", "text/plain")
-			w.WriteHeader(http.StatusForbidden)
-
-			_, writeErr := w.Write([]byte("You have arleady logged in."))
-
-			if writeErr != nil {
-				throwHTTPErrAndLog("error while trying to write response", writeErr, "An error occured while trying to write the response", w, http.StatusInternalServerError)
-				return
-			}
-
-			return
-		}
-
-		tempParseErrr := parseNewAccountTemp.Execute(w, nil)
-
-		if tempParseErrr != nil {
-			throwHTTPErrAndLog("failed to render signup template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
-			return
-		}
+		loadTemplateAndHandleTokenEdgeCase(w, r, parseNewAccountTemp)
 	}
 
 }
@@ -163,7 +169,7 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 		userData.Age = ageInt
 
 		//this is the raw password given by user being turned into an hash
-		hash, hashErr := hashing.HashPassword(r.FormValue("password"))
+		hash, hashErr := hashing.HashPassword(strings.TrimSpace(r.FormValue("password")))
 
 		if hashErr != nil {
 			throwHTTPErrAndLog("failed hashing the password", hashErr, "Your password was not successfully hashed by the server", w, http.StatusInternalServerError)
@@ -173,11 +179,9 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 		//submitting the hash into the database
 		userData.Password = hash
 
-		favouriteTopics := r.Form["items"]
-
 		//check if the values in that slice is under the max limit of 5 or no
-		if len(favouriteTopics) > 5 || len(favouriteTopics) == 0 {
-			throwHTTPErrAndLog("too many or no topics selected", err, "Select no more than 5 maxium topics and no less than 1.", w, http.StatusBadRequest)
+		if len(r.Form["items"]) > 5 || len(r.Form["items"]) == 0 {
+			throwHTTPErrAndLog("too many or no topics selected", nil, "Select no more than 5 maxium topics and no less than 1.", w, http.StatusBadRequest)
 			return
 		}
 		// add the slice in the the user struct
@@ -208,7 +212,7 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 			Name:     "Authorization", // Legal name string
 			Value:    fullCookieValue, // Value becomes: "Bearer 752059293"
 			Path:     "/",             // Available on all endpoints
-			Expires:  time.Now().Add(168 * time.Hour),
+			MaxAge:   7 * 24 * 60 * 60,
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
 			Secure:   false, // Set to true in production over HTTPS
@@ -223,5 +227,77 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 }
 
-//to do
-// work on /userLogin
+// shows the login html after verifying that user is not logged in
+// same logic as CallNewUser
+func CallLoginUser() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		loadTemplateAndHandleTokenEdgeCase(w, r, parseLoginAccountTemp)
+
+	}
+}
+
+// process the html form data and return accordingly
+func CallVerifyUser(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		if r.Method != http.MethodPost {
+			throwHTTPErrAndLog("unauthorized method!", nil, "The method you are trying to execute is UNAUTHORIZED", w, http.StatusMethodNotAllowed)
+			return
+		}
+
+		parseErr := r.ParseForm()
+
+		if parseErr != nil {
+			throwHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
+			return
+		}
+
+		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+		password := strings.TrimSpace(r.FormValue("password"))
+
+		_, userData, err := handlers.HandleVerifyUserData(ctx, pool, email)
+
+		if err != nil {
+			if errors.Is(err, handlers.ErrNoUserFound) {
+				throwHTTPErrAndLog("No user with this email exists in database", handlers.ErrNoUserFound, "The email provided is INVALID", w, http.StatusBadRequest)
+				return
+			}
+			throwHTTPErrAndLog("An error occured while trying to fetch data from db", err, "An error occured while trying to fetch your data form the database", w, http.StatusInternalServerError)
+			return
+		}
+
+		success := hashing.VerifyPassword(password, userData.Password) // comparing the user given pass with the hashed pass intially created upon accoutn creation
+
+		if !success {
+			throwHTTPErrAndLog("The password provided is incorrect", nil, "The password is INCORRECT", w, http.StatusBadRequest)
+			return
+		}
+
+		tokenString, err := authentication.CreateToken(userData.Id)
+
+		if err != nil {
+			throwHTTPErrAndLog("Error occured while making an JWT token using the created users ID", err, "Error occured while creating an token for you.", w, http.StatusInternalServerError)
+			return
+		}
+
+		fullCookieValue := "Bearer " + tokenString
+
+		authCookie := &http.Cookie{
+			Name:     "Authorization", // Legal name string
+			Value:    fullCookieValue, // Value becomes: "Bearer 752059293"
+			Path:     "/",             // Available on all endpoints
+			MaxAge:   7 * 24 * 60 * 60,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   false, // Set to true in production over HTTPS
+		}
+
+		http.SetCookie(w, authCookie)
+		http.Redirect(w, r, "/getUserData", http.StatusSeeOther)
+
+	}
+}
+
+//secure cookies, add cookies deletion upon inva;id cookies, and ask ai for security fixes and implementaition

@@ -7,3 +7,7 @@ type User struct {
 	Password        string   `json:"password"`
 	FavouriteTopics []string `json:"favouriteTopics"`
 }
+type LoggedUser struct {
+	Id       int
+	Password string
+}
