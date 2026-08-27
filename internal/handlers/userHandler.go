@@ -68,11 +68,28 @@ func HandleVerifyUserData(ctx context.Context, pool *pgxpool.Pool, email string)
 			log.Println("No user with this email exists")
 			return false, models.LoggedUser{}, ErrNoUserFound
 		}
-		log.Println("An error occured while to fetch user data")
+		log.Println("An error occured while trying to fetch user data")
 		return false, models.LoggedUser{}, err
 	}
 
 	log.Println("Successfully fetched user data")
 	return true, userData, nil
 
+}
+
+func HandleUserDataDeletion(ctx context.Context, pool *pgxpool.Pool, userID int) (bool, error) {
+	commandTag, err := pool.Exec(ctx, `DELETE FROM sclera.users WHERE id = $1`, userID)
+
+	if err != nil {
+		log.Println("an error occured whilist looking for user in the database")
+		return false, err
+	}
+
+	if commandTag.RowsAffected() == 0 {
+		log.Println("No user with this ID exist")
+		return false, ErrNoUserFound
+	}
+
+	log.Println("Successfully deleted user data")
+	return true, nil
 }

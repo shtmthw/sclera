@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/mattthew/sclera/internal/authentication"
 )
@@ -38,11 +39,12 @@ func CheckJwtToken(next http.HandlerFunc) http.HandlerFunc {
 		tokenString := cookie.Value
 
 		if !strings.HasPrefix(tokenString, "Bearer ") {
+			w.WriteHeader(http.StatusBadRequest)
+
 			prefixErr := json.NewEncoder(w).Encode(map[string]string{
 				"error": "invalid prefix",
 			})
 			log.Println("wrong prefix provided:", prefixErr)
-			w.WriteHeader(http.StatusBadRequest)
 			return
 
 		}
@@ -51,8 +53,23 @@ func CheckJwtToken(next http.HandlerFunc) http.HandlerFunc {
 		userID, err := authentication.VerifyToken(tokenString)
 
 		if err != nil {
+			c := &http.Cookie{
+				Name:     "Authorization",
+				Value:    "",              // Clear the value
+				Path:     "/",             // Must match the original path
+				MaxAge:   -1,              // Signals immediate deletion
+				Expires:  time.Unix(0, 0), // Backward compatibility for older browsers
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+				Secure:   false,
+			}
+			log.Println("error in jwt auth, err: ", err)
+
+			http.SetCookie(w, c)
+			w.WriteHeader(http.StatusUnauthorized)
+
 			writeErr := json.NewEncoder(w).Encode(map[string]string{
-				"error": "invalid token",
+				"error": "invalid token, please log/sign in again",
 			})
 
 			//this is fucking ridicolous too..
@@ -60,16 +77,14 @@ func CheckJwtToken(next http.HandlerFunc) http.HandlerFunc {
 				log.Println("error writing unauthorized response:", writeErr)
 			}
 
-			log.Println("error in jwt auth, err: ", err)
-			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
 		UserIDContext := context.WithValue(r.Context(), UserIDkey, userID) //takes the current http.Requests context
 		//and adsd the userIDkey as the key using the userID as the value and genarates a new context holding the old contexts data
 		//and a new key value
-
-		next(w, r.WithContext(UserIDContext)) //then passes it to the handlers new http.Request (that been made becuase of r.WithContext)
+		newReq := r.WithContext(UserIDContext)
+		next(w, newReq) //then passes it to the handlers new http.Request (that been made becuase of r.WithContext)
 		//with the new contex and the handler then also gets the access of the added value, also remember the request is new but derived
 		//meaning it still has the properties and metadata of the original request
 	}

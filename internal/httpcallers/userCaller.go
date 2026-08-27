@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mattthew/sclera/internal/authentication"
@@ -29,7 +30,7 @@ func throwHTTPErrAndLog(logText string, logErr error, errorText string, w http.R
 	http.Error(w, errorText, httpStat)
 }
 
-func CallGetUser(pool *pgxpool.Pool) func(w http.ResponseWriter, r *http.Request) {
+func CallGetUser(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -99,7 +100,23 @@ func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, 
 
 		_, err := authentication.VerifyToken(tokenString)
 		if err != nil {
-			throwHTTPErrAndLog("provided token is not authorized", err, "The token associated with your account is INVALID", w, http.StatusBadRequest)
+			c := &http.Cookie{
+				Name:     "Authorization",
+				Value:    "",              // Clear the value
+				Path:     "/",             // Must match the original path
+				MaxAge:   -1,              // Signals immediate deletion
+				Expires:  time.Unix(0, 0), // Backward compatibility for older browsers
+				HttpOnly: true,
+				SameSite: http.SameSiteLaxMode,
+				Secure:   false,
+			}
+
+			// Write the Set-Cookie header to the response
+			// will not cause a superflous error as this is a declaration not a proccesion
+			http.SetCookie(w, c)
+
+			// this is the close http contact or a preccesion call
+			http.Redirect(w, r, "/loginUser", http.StatusSeeOther)
 			return
 		}
 
@@ -300,4 +317,75 @@ func CallVerifyUser(pool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-//secure cookies, add cookies deletion upon inva;id cookies, and ask ai for security fixes and implementaition
+// put this thru the middleware as user cant logout if hes not logged in at the first place, same for the /deleteAccount api
+func LogoutUser() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, err := r.Cookie("Authorization")
+		if err != nil {
+			log.Println("", err)
+			throwHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", err, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
+			//always throws an http.Error
+			return
+			//why do i need a return here
+			//ans: return statements are preciesly there to prematurely end a function
+		}
+
+		instantCookieDeletion := &http.Cookie{
+			Name:     "Authorization",
+			Value:    "",              // Clear the value
+			Path:     "/",             // Must match the original path
+			MaxAge:   -1,              // Signals immediate deletion
+			Expires:  time.Unix(0, 0), // Backward compatibility for older browsers
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   false,
+		}
+
+		http.SetCookie(w, instantCookieDeletion)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		//why do i not need a return here
+		//ans: because this is the natural end of this function
+	}
+}
+
+// call a database look up the uses existance and perform the deletion of both the user data and cookie
+func DeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		userID := ctx.Value(middleware.UserIDkey).(int)
+		_, err := handlers.HandleUserDataDeletion(ctx, pool, userID)
+		// maybe someday ill need the stat bool in use :((
+
+		if err != nil {
+			if errors.Is(err, handlers.ErrNoUserFound) {
+				throwHTTPErrAndLog("No user with this ID exists in database", handlers.ErrNoUserFound, "The ID provided is INVALID", w, http.StatusBadRequest)
+				return
+			}
+			throwHTTPErrAndLog("An error occured while deleting user", handlers.ErrNoUserFound, "An error occured trying to delete your account", w, http.StatusInternalServerError)
+			return
+		}
+
+		_, cookieError := r.Cookie("Authorization")
+		if cookieError != nil {
+			log.Println("", err)
+			throwHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", err, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
+			return
+		}
+		instantCookieDeletion := &http.Cookie{
+			Name:     "Authorization",
+			Value:    "",              // Clear the value
+			Path:     "/",             // Must match the original path
+			MaxAge:   -1,              // Signals immediate deletion
+			Expires:  time.Unix(0, 0), // Backward compatibility for older browsers
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   false,
+		}
+
+		http.SetCookie(w, instantCookieDeletion)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	}
+}
+
+//add these upper funcs to the mux http router
