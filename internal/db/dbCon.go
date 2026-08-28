@@ -9,6 +9,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+//random change
+
 func ConnectDatabase(ctx context.Context) (*pgxpool.Pool, error) {
 	connString := os.Getenv("DATABASE_URL")
 	if connString == "" {
