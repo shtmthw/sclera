@@ -11,3 +11,8 @@ type LoggedUser struct {
 	Id       int
 	Password string
 }
+type UpdatedUser struct {
+	Id              int      `json:"id"`
+	Name            string   `json:"name"`
+	FavouriteTopics []string `json:"favouriteTopics"`
+}

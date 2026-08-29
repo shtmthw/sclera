@@ -93,3 +93,37 @@ func HandleUserDataDeletion(ctx context.Context, pool *pgxpool.Pool, userID int)
 	log.Println("Successfully deleted user data")
 	return true, nil
 }
+
+func HandleHashedPasswordFetch(ctx context.Context, pool *pgxpool.Pool, userID int) (bool, string, error) {
+	var password string
+	err := pool.QueryRow(ctx, `SELECT password FROM sclera.users WHERE id = $1`, userID).Scan(&password)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Println("No user with this id exists")
+			return false, "", ErrNoUserFound
+		}
+		log.Println("An error occured while trying to fetch users hashed password")
+		return false, "", err
+	}
+
+	log.Println("Successfully fetched users hashed password")
+	return true, password, nil
+
+}
+
+func HandleUserDataUpdating(ctx context.Context, pool *pgxpool.Pool, userData models.UpdatedUser) (bool, error) {
+	commandTag, err := pool.Exec(ctx, `UPDATE sclera.users SET name = $2, favouriteTopics = $3 WHERE id = $1;`, userData.Id, userData.Name, userData.FavouriteTopics)
+
+	if err != nil {
+		log.Println("an error occured whilist looking for user in the database")
+		return false, err
+	}
+
+	if commandTag.RowsAffected() == 0 {
+		log.Println("No user with this ID exist")
+		return false, ErrNoUserFound
+	}
+
+	return true, nil
+
+}

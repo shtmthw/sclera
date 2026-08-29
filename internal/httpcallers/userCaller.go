@@ -84,6 +84,7 @@ func CallGetUser(pool *pgxpool.Pool) http.HandlerFunc {
 // make sure to preload this SOMEHOW, but this is NOT GOOD FOR OPTIMIZATION
 var parseNewAccountTemp = template.Must(template.ParseFiles("userHandling/newAccount.html"))
 var parseLoginAccountTemp = template.Must(template.ParseFiles("userHandling/loginAccount.html"))
+var parseUpdateAccountTemp = template.Must(template.ParseFiles("userHandling/updateAccount.html"))
 
 func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, template *template.Template) {
 
@@ -318,7 +319,7 @@ func CallVerifyUser(pool *pgxpool.Pool) http.HandlerFunc {
 }
 
 // put this thru the middleware as user cant logout if hes not logged in at the first place, same for the /deleteAccount api
-func LogoutUser() http.HandlerFunc {
+func CallLogoutUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		_, err := r.Cookie("Authorization")
 		if err != nil {
@@ -349,7 +350,7 @@ func LogoutUser() http.HandlerFunc {
 }
 
 // call a database look up the uses existance and perform the deletion of both the user data and cookie
-func DeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
+func CallDeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -388,4 +389,117 @@ func DeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-//add these upper funcs to the mux http router
+// goes thru to middleware to make sure user is authenticated
+// loads the http template to the user
+
+func CallUpdateUserClientSide() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+		tempParseErrr := parseUpdateAccountTemp.Execute(w, nil)
+
+		if tempParseErrr != nil {
+			throwHTTPErrAndLog("failed to render signup template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+// should make sure the given pass is right
+func CallUpdateUserServerSide(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		userID := ctx.Value(middleware.UserIDkey).(int)
+
+		parseErr := r.ParseForm()
+
+		if parseErr != nil {
+			throwHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
+			return
+		}
+
+		var userData models.UpdatedUser
+
+		if r.Method != http.MethodPost {
+			throwHTTPErrAndLog("unauthorized method!", nil, "The method you are trying to execute is UNAUTHORIZED", w, http.StatusMethodNotAllowed)
+			return
+		}
+
+		//get the hashed pass
+		_, hashedPassword, err := handlers.HandleHashedPasswordFetch(ctx, pool, userID)
+
+		if err != nil {
+			if errors.Is(err, handlers.ErrNoUserFound) {
+				throwHTTPErrAndLog("user with this id does not exists", handlers.ErrNoUserFound, "User ID is INVALID", w, http.StatusBadRequest)
+				return
+			}
+			throwHTTPErrAndLog("An error occcured while fetching users hashed password", err, "An error occured whilist fetching your password", w, http.StatusInternalServerError)
+			return
+		}
+
+		//get the user give info from the html form
+		name := strings.TrimSpace(r.FormValue("name"))
+
+		if name == "" {
+			throwHTTPErrAndLog("Name is empty", nil, "Name cannot be empty", w, http.StatusBadRequest)
+			return
+		}
+
+		userData.Name = name
+
+		unhashedPassword := strings.TrimSpace(r.FormValue("password"))
+
+		success := hashing.VerifyPassword(unhashedPassword, hashedPassword) // comparing the user given pass with the hashed pass intially created upon accoutn creation
+
+		if !success {
+			throwHTTPErrAndLog("The password provided is incorrect", nil, "The password is INCORRECT", w, http.StatusBadRequest)
+			return
+		}
+
+		//check if the values in that slice is under the max limit of 5 or no
+		if len(r.Form["items"]) > 5 || len(r.Form["items"]) == 0 {
+			throwHTTPErrAndLog("too many or no topics selected", nil, "Select no more than 5 maxium topics and no less than 1.", w, http.StatusBadRequest)
+			return
+		}
+		// add the slice in the the user struct
+		userData.FavouriteTopics = r.Form["items"]
+		userData.Id = userID
+
+		//send the userData sturct to get updated
+
+		_, userDataUpdatingErr := handlers.HandleUserDataUpdating(ctx, pool, userData)
+
+		if userDataUpdatingErr != nil {
+			if errors.Is(userDataUpdatingErr, handlers.ErrNoUserFound) {
+				throwHTTPErrAndLog("user with this id does not exists", handlers.ErrNoUserFound, "User ID is INVALID", w, http.StatusBadRequest)
+				return
+			}
+			throwHTTPErrAndLog("An error occcured while updating users account", userDataUpdatingErr, "An error occured whilist updating your account", w, http.StatusInternalServerError)
+			return
+		}
+
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+	}
+}
+
+// step 1 of password resetting
+// send a verification email to user thru mailing then redirect to step 2 it being /verifyOTP
+func CallSendVerificationMail(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+	}
+}
+
+//step 2 of passoword resseting
+//the OTP verification using redis, idfk how ill do that but gonan figure shit out
+
+// step 3 of password resetting
+// check if the passwords are same or not, if same dont allow user to change it BUT KEEP THE FUNC RUNNING, if the pass is diff then let user change it
+func CallUpdateUserPassword(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+	}
+}
+
+//todo
+//fix replacement of already present favourite topics, and let user unselect and select new topics based on pref!!
