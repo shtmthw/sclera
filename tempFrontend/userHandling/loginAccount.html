@@ -12,4 +12,17 @@
         <input type="password" name="password" placeholder="Your password" required>
         <button type="submit">Submit</button>
     </form>
+
+    <button id="forgotBtn">Forgot your password?</button>
+
+    <form id="changePasswordForm" action="/sendVerificationMail" method="POST" style="display: none;">
+        <input type="text" name="email" placeholder="Your email" required>
+        <button type="submit">Send OTP to my email accout</button>
+    </form>
+
+    <script>
+        document.getElementById('forgotBtn').addEventListener('click', function () {
+            document.getElementById('changePasswordForm').style.display = 'block';
+        });
+    </script>
 </body>

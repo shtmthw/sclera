@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Update Account & Preferences</title>
+</head>
+<body>
+    <h1>Update your account and select new topics</h1>
+
+    <form action="/updateUserAccount" method="POST">
+        <div>
+            <input type="text" name="name" placeholder="Your name" required>
+        </div>
+
+        <fieldset>
+            <legend>Select up to 5 topics:</legend>
+            <label><input type="checkbox" name="items" value="fish"> Fish</label><br>
+            <label><input type="checkbox" name="items" value="chicken"> Chicken</label><br>
+            <label><input type="checkbox" name="items" value="pig"> Pig</label><br>
+            <label><input type="checkbox" name="items" value="beef"> Beef</label><br>
+            <label><input type="checkbox" name="items" value="eggs"> Eggs</label><br>
+            <label><input type="checkbox" name="items" value="lettuce"> Lettuce</label>
+        </fieldset>
+
+        <div>
+            <input type="password" name="password" placeholder="Your password" required>
+        </div>
+        
+        <button type="submit">Submit</button>
+    </form>
+
+    <hr>
+
+    <button type="button" id="forgotBtn">Forgot your password?</button>
+
+    <form id="changePasswordForm" action="/sendVerificationMail" method="POST" style="display: none;">
+        <input type="email" name="email" placeholder="Your email" required>
+        <button type="submit">Send OTP to my email account</button>
+    </form>
+
+    <script>
+        // Limit checkbox selection to 5 items
+        const checkboxes = document.querySelectorAll('input[name="items"]');
+        checkboxes.forEach(cb => {
+            cb.addEventListener('change', () => {
+                const checkedCount = document.querySelectorAll('input[name="items"]:checked').length;
+                checkboxes.forEach(box => {
+                    box.disabled = checkedCount >= 5 && !box.checked;
+                });
+            });
+        });
+
+        // Toggle visibility for forgot password form
+        const forgotBtn = document.getElementById('forgotBtn');
+        const changePasswordForm = document.getElementById('changePasswordForm');
+        
+        forgotBtn.addEventListener('click', () => {
+            const isHidden = changePasswordForm.style.display === 'none';
+            changePasswordForm.style.display = isHidden ? 'block' : 'none';
+        });
+    </script>
+</body>
+</html>
