@@ -502,4 +502,6 @@ func CallUpdateUserPassword(pool *pgxpool.Pool) http.HandlerFunc {
 }
 
 //todo
-//fix replacement of already present favourite topics, and let user unselect and select new topics based on pref!!
+// fix replacement of already present favourite topics, and let user unselect and select new topics based on pref!!
+// recreat the OTP handling YOURSELF ALONE and implement better practices, YOURSELF
+// finish the CallSendVerificationMail and CallUpdateUserPassword functions
