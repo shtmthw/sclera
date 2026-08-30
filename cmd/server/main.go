@@ -24,7 +24,13 @@ func main() {
 		Addr: os.Getenv("REDIS_URL"),
 	})
 
-	defer redisClient.Close()
+	defer func() {
+		deferErr := redisClient.Close()
+		if deferErr != nil {
+			log.Println("an error occured whilist trying to close the redis server")
+		}
+
+	}()
 
 	fmt.Println("redis server connection prepared")
 
