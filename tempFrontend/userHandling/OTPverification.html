@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify your code</title>
+<style>
+  /* ---------- Design tokens ----------
+     Palette: deep ink background, a single signal-green accent used only
+     for the thing that matters (the code itself + success state).
+     Type: system sans for copy, monospace for the digits — the code IS
+     data, so it gets the data-shaped typeface, not a decorative choice. */
+  :root {
+    --ink: #10131A;
+    --ink-raised: #171B24;
+    --hairline: #262B36;
+    --text: #EDEFF3;
+    --text-dim: #8B92A3;
+    --signal: #35D68C;
+    --signal-dim: #1F8C5C;
+    --error: #E5636B;
+    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--ink);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 24px;
+  }
+
+  /* Reduced motion respected: only the one deliberate load-in animation,
+     and it's skipped entirely if the user has motion reduced. */
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  .card {
+    width: 100%;
+    max-width: 380px;
+    animation: rise 420ms ease-out;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--ink-raised);
+    border: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 28px;
+  }
+
+  .mark svg { width: 18px; height: 18px; }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+  }
+
+  .sub {
+    color: var(--text-dim);
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 0 0 32px;
+    max-width: 34ch;
+  }
+
+  .sub strong {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  /* ---------- The 6 digit boxes ---------- */
+  .digits {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .digit {
+    width: 100%;
+    aspect-ratio: 1 / 1.15;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--ink-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    outline: none;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+    caret-color: var(--signal);
+  }
+
+  .digit:focus {
+    border-color: var(--signal-dim);
+    box-shadow: 0 0 0 3px rgba(53, 214, 140, 0.15);
+  }
+
+  .digits.error .digit {
+    border-color: var(--error);
+  }
+
+  /* ---------- Status line: countdown + error share this slot ---------- */
+  .status {
+    min-height: 20px;
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+
+  .status .timer { color: var(--text-dim); }
+  .status .timer strong { color: var(--text); font-variant-numeric: tabular-nums; }
+  .status .error-text { color: var(--error); display: none; }
+  .status.is-error .timer { display: none; }
+  .status.is-error .error-text { display: inline; }
+
+  button.submit {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    background: var(--signal);
+    color: #0A1510;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity 140ms ease, transform 80ms ease;
+  }
+
+  button.submit:disabled {
+    background: var(--ink-raised);
+    color: var(--text-dim);
+    border: 1px solid var(--hairline);
+    cursor: not-allowed;
+  }
+
+  button.submit:not(:disabled):active { transform: scale(0.99); }
+
+  .resend {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  .resend button {
+    background: none;
+    border: none;
+    color: var(--signal);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .resend button:disabled {
+    color: var(--text-dim);
+    cursor: not-allowed;
+    text-decoration: none;
+  }
+
+  /* Keyboard focus must stay visible — accessibility floor, not optional */
+  button:focus-visible,
+  .digit:focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+
+  <div class="mark">
+    <!-- simple shield/check mark, not a stock icon font -->
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 2L4 5v6c0 5 3.4 8.7 8 10 4.6-1.3 8-5 8-10V5l-8-3z" stroke="#35D68C" stroke-width="1.6" stroke-linejoin="round"/>
+      <path d="M8.5 12l2.4 2.4L15.5 9.5" stroke="#35D68C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+
+  <h1>Enter your code</h1>
+  <p class="sub">We sent a 6-digit code to <strong id="emailTarget">your email</strong>. It expires in 5 minutes.</p>
+
+  <form id="otpForm" novalidate>
+    <div class="digits" id="digitsWrap">
+      <input class="digit" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" data-index="0" aria-label="Digit 1">
+      <input class="digit" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-index="1" aria-label="Digit 2">
+      <input class="digit" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-index="2" aria-label="Digit 3">
+      <input class="digit" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-index="3" aria-label="Digit 4">
+      <input class="digit" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-index="4" aria-label="Digit 5">
+      <input class="digit" inputmode="numeric" pattern="[0-9]*" maxlength="1" data-index="5" aria-label="Digit 6">
+    </div>
+
+    <div class="status" id="status">
+      <span class="timer">Expires in <strong id="countdown">5:00</strong></span>
+      <span class="error-text" id="errorText">Invalid code, try again.</span>
+    </div>
+
+    <button type="submit" class="submit" id="submitBtn" disabled>Verify code</button>
+  </form>
+
+  <div class="resend">
+    Didn't get it? <button type="button" id="resendBtn">Resend code</button>
+  </div>
+
+</div>
+
+<script>
+  // ---------- Grab everything we'll touch ----------
+  const digitsWrap = document.getElementById('digitsWrap');
+  const digits = Array.from(digitsWrap.querySelectorAll('.digit'));
+  const form = document.getElementById('otpForm');
+  const submitBtn = document.getElementById('submitBtn');
+  const statusEl = document.getElementById('status');
+  const countdownEl = document.getElementById('countdown');
+  const errorTextEl = document.getElementById('errorText');
+  const resendBtn = document.getElementById('resendBtn');
+  const emailTarget = document.getElementById('emailTarget');
+
+  // ---------- Email, for display only ----------
+  // This is NOT how the backend knows who's verifying — that comes from
+  // the authenticated session/context on the server (middleware.UserIDkey),
+  // same as CreateOTP/VerifyOTP already expect. This query param only
+  // controls what's shown on screen ("we sent a code to ___").
+  const params = new URLSearchParams(window.location.search);
+  const email = params.get('email') || '';
+  if (email) emailTarget.textContent = email;
+
+  // ---------- Digit box behavior: type, backspace, arrows, paste ----------
+  digits.forEach((input, i) => {
+    input.addEventListener('input', () => {
+      // strip anything that isn't a digit, keep only the first character
+      input.value = input.value.replace(/[^0-9]/g, '').slice(0, 1);
+      if (input.value && i < digits.length - 1) {
+        digits[i + 1].focus();
+      }
+      updateSubmitState();
+      clearError();
+    });
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Backspace' && !input.value && i > 0) {
+        digits[i - 1].focus();
+      }
+      if (e.key === 'ArrowLeft' && i > 0) digits[i - 1].focus();
+      if (e.key === 'ArrowRight' && i < digits.length - 1) digits[i + 1].focus();
+    });
+
+    // pasting the full code into any box fills all six at once
+    input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const pasted = (e.clipboardData.getData('text') || '').replace(/[^0-9]/g, '').slice(0, 6);
+      if (!pasted) return;
+      pasted.split('').forEach((char, idx) => { if (digits[idx]) digits[idx].value = char; });
+      const next = digits[Math.min(pasted.length, digits.length - 1)];
+      next.focus();
+      updateSubmitState();
+      clearError();
+    });
+  });
+
+  function currentCode() {
+    return digits.map(d => d.value).join('');
+  }
+
+  function updateSubmitState() {
+    submitBtn.disabled = currentCode().length !== 6;
+  }
+
+  function clearError() {
+    statusEl.classList.remove('is-error');
+    digitsWrap.classList.remove('error');
+  }
+
+  function showError(message) {
+    errorTextEl.textContent = message;
+    statusEl.classList.add('is-error');
+    digitsWrap.classList.add('error');
+    digits[0].focus();
+    digits[0].select();
+  }
+
+  // ---------- Attempts counter ----------
+  // The backend's authentication.VerifyOTP enforces maxAttempts = 5 against
+  // its own Redis counter, but CallVerifyOTPserverSide's error response for
+  // a wrong guess (ErrInvalidOTP) is just the plain string "invalid OTP" —
+  // no remaining-count comes back in the body. So this is a MIRROR, not the
+  // real authority: it assumes attempt #1 through #5 get checked normally,
+  // matching the server's `attempts > maxAttempts` boundary. If it ever
+  // drifts (e.g. page reloaded mid-flow, server's Redis counter didn't
+  // reset), the server's own check still wins — the very next wrong guess
+  // would just get redirected to /updateAccout by the backend regardless of
+  // what this counter displays.
+  const MAX_ATTEMPTS = 5;
+  let attemptsLeft = MAX_ATTEMPTS;
+
+  // ---------- 5 minute countdown, mirrors the backend's otpTTL ----------
+  // Purely visual — the real expiry is enforced server-side by Redis's TTL.
+  // This just tells the user how much time they likely have left so they're
+  // not caught off guard by an "expired" error with no warning.
+  let secondsLeft = 5 * 60;
+  const timer = setInterval(() => {
+    secondsLeft--;
+    const m = Math.floor(secondsLeft / 60);
+    const s = String(secondsLeft % 60).padStart(2, '0');
+    countdownEl.textContent = `${m}:${s}`;
+    if (secondsLeft <= 0) {
+      clearInterval(timer);
+      showError('This code has expired. Request a new one below.');
+      submitBtn.disabled = true;
+    }
+  }, 1000);
+
+  // ---------- Submit: POST the code to /verifyOTP ----------
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Verifying…';
+
+    // Sent as application/x-www-form-urlencoded to match r.ParseForm() /
+    // r.FormValue() on the Go side, same as the rest of this codebase —
+    // swap this for JSON only if the handler is changed to decode JSON.
+    // No identifier field here on purpose: the server already knows who's
+    // verifying from the authenticated session (ctx.Value(middleware.UserIDkey)),
+    // same as CreateOTP does — the client only needs to supply the code.
+    const body = new URLSearchParams({
+      otp: currentCode()
+    });
+
+    try {
+      const res = await fetch('/verifyOTP', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+        credentials: 'same-origin' // ensures the Authorization cookie rides along, since the handler reads userID from ctx via middleware
+      });
+
+      // CallVerifyOTPserverSide uses http.Redirect (303 See Other) for BOTH
+      // outcomes below — fetch follows redirects by default, so `res` here
+      // reflects wherever the server ultimately sent the browser, and
+      // `res.redirected` tells us a redirect actually happened.
+      if (res.redirected) {
+        const destination = new URL(res.url).pathname;
+
+        if (destination === '/updateUsersPassword') {
+          // authentication.VerifyOTP returned nil — correct code.
+          // Server already deleted the Email cookie on its end.
+          submitBtn.textContent = 'Verified';
+          clearInterval(timer);
+          window.location.href = res.url;
+          return;
+        }
+
+        if (destination === '/updateAccout') {
+          // errors.Is(verificationErr, authentication.ErrMaxAttempts) branch —
+          // server's own Redis-backed counter hit the limit and force-redirected.
+          // Note: this path in the backend is literally "/updateAccout" (no 'n') —
+          // matched here exactly as written; flag it if that's actually a typo
+          // for "/updateAccount", since a mismatch would just 404 silently.
+          clearInterval(timer);
+          showError('Too many failed attempts. Redirecting you to request a new code…');
+          submitBtn.disabled = true;
+          setTimeout(() => { window.location.href = res.url; }, 1500);
+          return;
+        }
+
+        // Any other destination — something else (e.g. auth middleware)
+        // decided where this user belongs; just follow it rather than guessing.
+        window.location.href = res.url;
+        return;
+      }
+
+      // No redirect occurred, so this is one of the plain-text error branches:
+      // empty "otp" field, ErrInvalidOTP ("invalid OTP"), or the generic
+      // internal-error fallback — all sent via http.Error, plain text body.
+      const message = await res.text();
+
+      if (res.status === 400) {
+        attemptsLeft -= 1;
+        if (attemptsLeft > 0) {
+          showError(`${message || 'Invalid code.'} — ${attemptsLeft} ${attemptsLeft === 1 ? 'try' : 'tries'} left`);
+        } else {
+          // Local counter hit zero. This is a MIRROR of the server's own
+          // limit, not the source of truth — if the counts have somehow
+          // drifted, the server's next check still governs what happens.
+          showError('Final attempt to get right mate.');
+          submitBtn.disabled = true;
+        }
+      } else {
+        // 500-level: covers r.ParseForm() failures and the generic
+        // "VerifyOTP returned something other than ErrMaxAttempts/ErrInvalidOTP"
+        // catch-all — including, notably, an expired OTP, since this handler
+        // doesn't check for that case specifically and it falls through here.
+        showError(message || 'Something went wrong verifying your code.');
+      }
+
+      digits.forEach(d => d.value = '');
+      digits[0].focus();
+    } catch (err) {
+      showError('Network error — check your connection and try again.');
+    } finally {
+      if (attemptsLeft > 0) {
+        submitBtn.disabled = currentCode().length !== 6;
+      }
+      submitBtn.textContent = 'Verify code';
+    }
+  });
+
+  // ---------- Resend: hits whatever endpoint triggers CreateOTP again ----------
+  // Disabled for resendCooldown (60s) to mirror the backend's own cooldown key,
+  // so the button's state matches what the server would actually allow.
+  resendBtn.addEventListener('click', async () => {
+    resendBtn.disabled = true;
+    let cooldown = 60;
+    resendBtn.textContent = `Resend in ${cooldown}s`;
+
+    try {
+      // Same deal as verify: no identifier sent, the server resolves the
+      // user from the session. `email` still goes along only because
+      // CallSendVerificationMail reads it via r.FormValue("email") to
+      // know the send-to address — that's form input, not identity.
+      await fetch('/sendVerificationMail', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ email }),
+        credentials: 'same-origin'
+      });
+      // reset the visual OTP-expiry countdown too, since a resend means
+      // a brand new code with a fresh 5-minute window server-side
+      secondsLeft = 5 * 60;
+      clearError();
+      digits.forEach(d => d.value = '');
+      digits[0].focus();
+      updateSubmitState();
+    } catch (err) {
+      showError('Could not resend right now. Try again shortly.');
+    }
+
+    const tick = setInterval(() => {
+      cooldown--;
+      resendBtn.textContent = `Resend in ${cooldown}s`;
+      if (cooldown <= 0) {
+        clearInterval(tick);
+        resendBtn.disabled = false;
+        resendBtn.textContent = 'Resend code';
+      }
+    }, 1000);
+  });
+</script>
+
+</body>
+</html>
