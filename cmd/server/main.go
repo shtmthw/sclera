@@ -6,11 +6,11 @@ import (
 	"log"
 	"os"
 
-	"github.com/redis/go-redis/v9"
-
 	"github.com/joho/godotenv"
 	"github.com/mattthew/sclera/internal/db"
 	"github.com/mattthew/sclera/internal/server"
+	"github.com/redis/go-redis/v9"
+	"github.com/resend/resend-go/v3"
 )
 
 func main() {
@@ -34,13 +34,18 @@ func main() {
 
 	fmt.Println("redis server connection prepared")
 
+	resendApiKey := os.Getenv("RESEND_API_KEY")
+
+	resendClient := resend.NewClient(resendApiKey)
+
 	pool, err := db.ConnectDatabase(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	defer pool.Close()
 
-	server.RunServer(pool, redisClient)
+	server.RunServer(pool, redisClient, resendClient)
 
 	fmt.Println("Sclera server starting...")
 }

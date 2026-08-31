@@ -21,6 +21,19 @@ RUN go build -o main ./cmd/server
 FROM debian:bookworm-slim
 #and here starts the new image, a lightweight debian linux distro
 
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+    
+# installs the CA certificate bundle into /etc/ssl/certs — bookworm-slim
+# ships with nothing here by default, so any outbound HTTPS call (Resend,
+# any other API) has no root certificates to verify the server's cert
+# against and fails closed with an x509 "unknown authority" error.
+# --no-install-recommends keeps this from dragging in extra unneeded packages,
+# and the rm afterward drops apt's package index so it doesn't bloat the image.
+
+
 WORKDIR /Sclera
 #makes the Sclera folder within it
 

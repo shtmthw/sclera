@@ -3,6 +3,7 @@ package httpcallers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -16,6 +17,8 @@ import (
 	"github.com/mattthew/sclera/internal/hashing"
 	"github.com/mattthew/sclera/internal/middleware"
 	"github.com/mattthew/sclera/internal/models"
+	"github.com/redis/go-redis/v9"
+	"github.com/resend/resend-go/v3"
 )
 
 // random comment to run ci pipeline
@@ -85,6 +88,7 @@ func CallGetUser(pool *pgxpool.Pool) http.HandlerFunc {
 var parseNewAccountTemp = template.Must(template.ParseFiles("userHandling/newAccount.html"))
 var parseLoginAccountTemp = template.Must(template.ParseFiles("userHandling/loginAccount.html"))
 var parseUpdateAccountTemp = template.Must(template.ParseFiles("userHandling/updateAccount.html"))
+var parseOTPverificationTemp = template.Must(template.ParseFiles("userHandling/OTPverification.html"))
 
 func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, template *template.Template) {
 
@@ -399,7 +403,7 @@ func CallUpdateUserClientSide() http.HandlerFunc {
 		tempParseErrr := parseUpdateAccountTemp.Execute(w, nil)
 
 		if tempParseErrr != nil {
-			throwHTTPErrAndLog("failed to render signup template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
+			throwHTTPErrAndLog("failed to render template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
 			return
 		}
 	}
@@ -484,14 +488,200 @@ func CallUpdateUserServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 
 // step 1 of password resetting
 // send a verification email to user thru mailing then redirect to step 2 it being /verifyOTP
-func CallSendVerificationMail(pool *pgxpool.Pool) http.HandlerFunc {
+
+// making the html email boiler plate
+func buildOTPEmailHTML(otp string) string {
+	return fmt.Sprintf(`
+<div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background-color: #ffffff;">
+    
+    <!-- Header -->
+    <h2 style="color: #1a1a1a; font-size: 20px; margin-bottom: 8px;">Verify your account</h2>
+    <p style="color: #555555; font-size: 14px; line-height: 1.5; margin-bottom: 24px;">
+        Use the code below to finish verifying your account. This code expires in 5 minutes.
+    </p>
+
+    <!-- The OTP itself — this is the whole point of the email, make it unmissable -->
+    <div style="background-color: #f4f4f7; border-radius: 8px; padding: 20px; text-align: center; margin-bottom: 24px;">
+        <span style="font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #1a1a1a; font-family: monospace;">
+            %s
+        </span>
+    </div>
+
+    <!-- Reassurance / anti-phishing line -->
+    <p style="color: #888888; font-size: 13px; line-height: 1.5;">
+        Didn't request this code? You can safely ignore this email — no changes will be made to your account.
+    </p>
+
+    <hr style="border: none; border-top: 1px solid #eeeeee; margin: 24px 0;">
+
+    <p style="color: #aaaaaa; font-size: 12px;">
+        This is an automated message, please don't reply directly to this email.
+    </p>
+</div>`, otp)
+}
+
+// this is /sendVerificationMail
+func CallSendVerificationMail(resendClient *resend.Client, redisClient *redis.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+
+		ctx := r.Context()
+		intUserID := ctx.Value(middleware.UserIDkey).(int)
+		stringUserID := strconv.Itoa(intUserID)
+		parseErr := r.ParseForm()
+		var userEmail string
+
+		if parseErr != nil {
+			throwHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
+			return
+		}
+
+		storedCookieEmail, cookieErr := r.Cookie("Email")
+
+		if cookieErr != nil {
+			if errors.Is(cookieErr, http.ErrNoCookie) {
+				userEmail = strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+
+				if userEmail == "" {
+					throwHTTPErrAndLog("provided email is empty", nil, "Please fill up the email field.", w, http.StatusBadRequest)
+					return
+				}
+			} else {
+				log.Println("", cookieErr)
+				throwHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", cookieErr, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
+				return
+			}
+
+		} else {
+			userEmail = storedCookieEmail.Value
+		}
+
+		//	OTP CREATION
+		OTP, otpCreationError := authentication.CreateOTP(stringUserID, ctx, redisClient)
+
+		if otpCreationError != nil {
+			if errors.Is(otpCreationError, authentication.ErrOTPcoolDown) {
+				throwHTTPErrAndLog("resending OTP too fast, wait till the cooldown ends.", authentication.ErrOTPcoolDown, "Please wait before requesting a new OTP", w, http.StatusBadRequest)
+				return
+			}
+			throwHTTPErrAndLog("An error occcured while creating users OTP", otpCreationError, "An error occured whilist creating your OTP", w, http.StatusInternalServerError)
+			return
+		}
+
+		log.Println("Successfully made the OTP: ", OTP)
+
+		// EMAIL HANDLING
+		emailConfig := &resend.SendEmailRequest{
+			From:    "Acme <onboarding@resend.dev>",
+			To:      []string{userEmail},
+			Subject: "Your OTP code from Sclera",
+			Html:    buildOTPEmailHTML(OTP),
+		}
+
+		// Send the email
+		sent, err := resendClient.Emails.Send(emailConfig)
+		if err != nil {
+			throwHTTPErrAndLog("Error sending email: %v\n", err, "An error occured while trying to send you the email", w, http.StatusInternalServerError)
+			return
+		}
+
+		emailCookie := &http.Cookie{
+			Name:     "Email",   // Legal name string
+			Value:    userEmail, // Value becomes: "mathiwasbaroi@gmail.com"
+			Path:     "/sendVerificationMail",
+			MaxAge:   5 * 60,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   false, // Set to true in production over HTTPS
+		}
+
+		http.SetCookie(w, emailCookie)
+
+		log.Printf("Email sent successfully! ID: %s\n", sent.Id)
+
+		http.Redirect(w, r, "/inputOTP", http.StatusSeeOther)
 
 	}
 }
 
-//step 2 of passoword resseting
-//the OTP verification using redis, idfk how ill do that but gonan figure shit out
+// step 2 of passoword resseting
+// the OTP verification handling using redis
+// this is /inputOTP
+func CallVerifyOTPclientSide() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+		tempParseErrr := parseOTPverificationTemp.Execute(w, nil)
+
+		if tempParseErrr != nil {
+			throwHTTPErrAndLog("failed to render template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
+// this is /veriyOTP
+
+func instantCookieDeletion(w http.ResponseWriter, name string, path string) {
+	instantCookieDeletion := &http.Cookie{
+		Name:     name,
+		Value:    "", // Clear the value
+		Path:     path,
+		MaxAge:   -1,              // Signals immediate deletion
+		Expires:  time.Unix(0, 0), // Backward compatibility for older browsers
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   false,
+	}
+
+	http.SetCookie(w, instantCookieDeletion)
+
+}
+
+func CallVerifyOTPserverSide(redisClient *redis.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		parseErr := r.ParseForm()
+		ctx := r.Context()
+		intUserID := ctx.Value(middleware.UserIDkey).(int)
+		strUserID := strconv.Itoa(intUserID)
+
+		if parseErr != nil {
+			throwHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
+			return
+		}
+
+		userInputOTP := r.FormValue("otp")
+
+		if userInputOTP == "" {
+			throwHTTPErrAndLog("otp field missing from request", errors.New("empty otp"), "Please enter your verification code", w, http.StatusBadRequest)
+			return
+		}
+
+		verificationErr := authentication.VerifyOTP(strUserID, ctx, userInputOTP, redisClient)
+
+		if verificationErr != nil {
+			if errors.Is(verificationErr, authentication.ErrMaxAttempts) {
+
+				instantCookieDeletion(w, "Email", "/sendVerificationMail")
+				log.Println("too many attempts, please request a new OTP")
+				http.Redirect(w, r, "/updateAccout", http.StatusSeeOther)
+				return
+			}
+			if errors.Is(verificationErr, authentication.ErrInvalidOTP) {
+				throwHTTPErrAndLog("invalid OTP provided by the user", authentication.ErrInvalidOTP, "invalid OTP", w, http.StatusBadRequest)
+				return
+			}
+			throwHTTPErrAndLog("An error occcured while verifying users OTP", verificationErr, "An error occured whilist verifying your OTP", w, http.StatusInternalServerError)
+			return
+		}
+
+		log.Println("users OTP sucessfully verified")
+
+		//deltes the email cookie upon sucessfully verifying the OTP
+		instantCookieDeletion(w, "Email", "/sendVerificationMail")
+
+		http.Redirect(w, r, "/updateUsersPassword", http.StatusSeeOther)
+	}
+}
 
 // step 3 of password resetting
 // check if the passwords are same or not, if same dont allow user to change it BUT KEEP THE FUNC RUNNING, if the pass is diff then let user change it
@@ -502,6 +692,7 @@ func CallUpdateUserPassword(pool *pgxpool.Pool) http.HandlerFunc {
 }
 
 //todo
-// fix replacement of already present favourite topics, and let user unselect and select new topics based on pref!!
-// recreat the OTP handling YOURSELF ALONE and implement better practices, YOURSELF
-// finish the CallSendVerificationMail and CallUpdateUserPassword functions
+// understand layer caching of dokcer image build a
+// recreate the OTP handling YOURSELF ALONE and implement better practices, YOURSELF
+// understand hashing
+// read the CS:APP book

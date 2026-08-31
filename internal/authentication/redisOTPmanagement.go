@@ -61,6 +61,10 @@ func keys(identifier string) (otpKey, attemptsKey, cooldownKey string) {
 
 // ---------- Core Logic ----------
 
+var ErrOTPcoolDown = errors.New("please wait before requesting another OTP")
+var ErrMaxAttempts = errors.New("too many attempts, please request a new OTP")
+var ErrInvalidOTP = errors.New("invalid OTP")
+
 // this takes the users id as identifier, gets triggered upon "get otp button" and "resend OTP button"
 func CreateOTP(identifier string, ctx context.Context, rdb *redis.Client) (string, error) {
 	otpKey, attemptsKey, cooldownKey := keys(identifier) // assiging the users id to the predifined keys
@@ -74,7 +78,7 @@ func CreateOTP(identifier string, ctx context.Context, rdb *redis.Client) (strin
 	//if the "resend OTP" button has been hit before the 60 sec expiration of coolDownkey passed
 	//this is the guard clause preventing use from recreating the OTP multiple times in a short period of time
 	if exists == 1 {
-		return "", errors.New("please wait before requesting another OTP")
+		return "", ErrOTPcoolDown
 	}
 
 	//create the new plaintext OTP if the guard clause passed
@@ -105,6 +109,7 @@ func CreateOTP(identifier string, ctx context.Context, rdb *redis.Client) (strin
 }
 
 // this takes the users provided plaintext OTP and verifies it against the server saved OTP
+
 func VerifyOTP(identifier string, ctx context.Context, inputOTP string, rdb *redis.Client) error {
 	otpKey, attemptsKey, _ := keys(identifier) //fetches the keys using the users ID
 
@@ -132,7 +137,7 @@ func VerifyOTP(identifier string, ctx context.Context, inputOTP string, rdb *red
 	//if the user attempts to verify gets over the maxAttempts amount dont let the user the OTP and tell to resend it
 	if attempts > maxAttempts {
 		rdb.Del(ctx, otpKey)
-		return errors.New("too many attempts, please request a new OTP")
+		return ErrMaxAttempts
 	}
 
 	// takes the user send plaintext OTP and hasesh it so that it can be checked against the server saved OTP
@@ -140,7 +145,7 @@ func VerifyOTP(identifier string, ctx context.Context, inputOTP string, rdb *red
 
 	//compares the OTP saved into redises in-memory storage with the newly made hashedOTP that userprovided
 	if subtle.ConstantTimeCompare([]byte(storedHash), []byte(inputHash)) != 1 {
-		return fmt.Errorf("invalid OTP, %d attempt(s) left", maxAttempts-attempts)
+		return ErrInvalidOTP
 	}
 
 	// success — one-time use
