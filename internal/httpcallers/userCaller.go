@@ -1,6 +1,7 @@
 package httpcallers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -89,6 +90,7 @@ var parseNewAccountTemp = template.Must(template.ParseFiles("userHandling/newAcc
 var parseLoginAccountTemp = template.Must(template.ParseFiles("userHandling/loginAccount.html"))
 var parseUpdateAccountTemp = template.Must(template.ParseFiles("userHandling/updateAccount.html"))
 var parseOTPverificationTemp = template.Must(template.ParseFiles("userHandling/OTPverification.html"))
+var parseUpdatePasswordTemp = template.Must(template.ParseFiles("userHandling/updatePassword.html"))
 
 func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, template *template.Template) {
 
@@ -520,8 +522,25 @@ func buildOTPEmailHTML(otp string) string {
 </div>`, otp)
 }
 
+// makes sures if the ID the user is currently logged in is also the ID the user provided Email
+func checkEmailAndIDRelation(userGivenEmail string, userID int, ctx context.Context, pool *pgxpool.Pool) error {
+
+	email, err := handlers.HandleEmailAndIdCheck(ctx, pool, userID)
+	if err != nil {
+		if errors.Is(err, handlers.ErrNoUserFound) {
+			return handlers.ErrNoUserFound
+		}
+		return err
+	}
+
+	if email == userGivenEmail {
+		return nil
+	}
+	return errors.New("wrong email provided by the user")
+}
+
 // this is /sendVerificationMail
-func CallSendVerificationMail(resendClient *resend.Client, redisClient *redis.Client) http.HandlerFunc {
+func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, redisClient *redis.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
 		ctx := r.Context()
@@ -535,6 +554,11 @@ func CallSendVerificationMail(resendClient *resend.Client, redisClient *redis.Cl
 			return
 		}
 
+		if r.Method != http.MethodPost {
+			throwHTTPErrAndLog("unauthorized method!", nil, "The method you are trying to execute is UNAUTHORIZED", w, http.StatusMethodNotAllowed)
+			return
+		}
+
 		storedCookieEmail, cookieErr := r.Cookie("Email")
 
 		if cookieErr != nil {
@@ -545,6 +569,15 @@ func CallSendVerificationMail(resendClient *resend.Client, redisClient *redis.Cl
 					throwHTTPErrAndLog("provided email is empty", nil, "Please fill up the email field.", w, http.StatusBadRequest)
 					return
 				}
+				emailCheckErr := checkEmailAndIDRelation(userEmail, intUserID, ctx, pool)
+
+				if emailCheckErr != nil {
+					throwHTTPErrAndLog("Email is not connected to users ID", emailCheckErr, "Please provide the correct email.", w, http.StatusBadRequest)
+					return
+				}
+
+				log.Println("Email is connected to users ID.")
+
 			} else {
 				log.Println("", cookieErr)
 				throwHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", cookieErr, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
@@ -619,8 +652,6 @@ func CallVerifyOTPclientSide() http.HandlerFunc {
 	}
 }
 
-// this is /veriyOTP
-
 func instantCookieDeletion(w http.ResponseWriter, name string, path string) {
 	instantCookieDeletion := &http.Cookie{
 		Name:     name,
@@ -637,6 +668,7 @@ func instantCookieDeletion(w http.ResponseWriter, name string, path string) {
 
 }
 
+// this is /veriyOTP
 func CallVerifyOTPserverSide(redisClient *redis.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		parseErr := r.ParseForm()
@@ -648,7 +680,10 @@ func CallVerifyOTPserverSide(redisClient *redis.Client) http.HandlerFunc {
 			throwHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
 			return
 		}
-
+		if r.Method != http.MethodPost {
+			throwHTTPErrAndLog("unauthorized method!", nil, "The method you are trying to execute is UNAUTHORIZED", w, http.StatusMethodNotAllowed)
+			return
+		}
 		userInputOTP := r.FormValue("otp")
 
 		if userInputOTP == "" {
@@ -684,15 +719,59 @@ func CallVerifyOTPserverSide(redisClient *redis.Client) http.HandlerFunc {
 }
 
 // step 3 of password resetting
+// this is /runPasswordUpdation
 // check if the passwords are same or not, if same dont allow user to change it BUT KEEP THE FUNC RUNNING, if the pass is diff then let user change it
-func CallUpdateUserPassword(pool *pgxpool.Pool) http.HandlerFunc {
+func CallUpdateUserPasswordServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		userID := ctx.Value(middleware.UserIDkey).(int)
+		parseErr := r.ParseForm()
 
+		if parseErr != nil {
+			throwHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
+			return
+		}
+		if r.Method != http.MethodPost {
+			throwHTTPErrAndLog("unauthorized method!", nil, "The method you are trying to execute is UNAUTHORIZED", w, http.StatusMethodNotAllowed)
+			return
+		}
+		plaintTextPassword := r.FormValue("password")
+
+		//hash the users password
+		hashedPassword, hashingErr := hashing.HashPassword(plaintTextPassword)
+
+		if hashingErr != nil {
+			throwHTTPErrAndLog("failed hashing the password", hashingErr, "Your password was not successfully hashed by the server", w, http.StatusInternalServerError)
+			return
+		}
+
+		//replace users password with the newly hashed one
+		_, passUpdateErr := handlers.HandleUserPasswordUpdation(ctx, pool, hashedPassword, userID)
+
+		if passUpdateErr != nil {
+			if errors.Is(passUpdateErr, handlers.ErrNoUserFound) {
+				throwHTTPErrAndLog("user with this id does not exists", handlers.ErrNoUserFound, "User ID is INVALID", w, http.StatusBadRequest)
+				return
+			}
+			throwHTTPErrAndLog("An error occcured while updating users password", passUpdateErr, "An error occured whilist updating your password", w, http.StatusInternalServerError)
+			return
+		}
+
+		log.Println("successfully updated users password")
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
 }
 
-//todo
-// understand layer caching of dokcer image build a
-// recreate the OTP handling YOURSELF ALONE and implement better practices, YOURSELF
-// understand hashing
-// read the CS:APP book
+// this is /updateUsersPassword
+func CallUpdateUserPasswordClientSide() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+		tempParseErrr := parseUpdatePasswordTemp.Execute(w, nil)
+
+		if tempParseErrr != nil {
+			throwHTTPErrAndLog("failed to render template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
+			return
+		}
+	}
+}

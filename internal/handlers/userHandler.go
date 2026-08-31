@@ -127,3 +127,34 @@ func HandleUserDataUpdating(ctx context.Context, pool *pgxpool.Pool, userData mo
 	return true, nil
 
 }
+
+func HandleUserPasswordUpdation(ctx context.Context, pool *pgxpool.Pool, hashedUserGivenPassword string, userID int) (bool, error) {
+	commandTag, err := pool.Exec(ctx, `UPDATE sclera.users SET password = $1 WHERE id = $2;`, hashedUserGivenPassword, userID)
+
+	if err != nil {
+		log.Println("an error occured whilist looking for user in the database")
+		return false, err
+	}
+
+	if commandTag.RowsAffected() == 0 {
+		log.Println("No user with this ID exist")
+		return false, ErrNoUserFound
+	}
+
+	return true, nil
+}
+
+func HandleEmailAndIdCheck(ctx context.Context, pool *pgxpool.Pool, userID int) (string, error) {
+	var fetchedEmail string
+	err := pool.QueryRow(ctx, `SELECT email FROM sclera.users WHERE id=$1`, userID).Scan(&fetchedEmail)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Println("No user with this id exists")
+			return "", ErrNoUserFound
+		}
+		log.Println("An error occured while trying to fetch users email")
+		return "", ErrNoUserFound
+	}
+
+	return fetchedEmail, nil
+}
