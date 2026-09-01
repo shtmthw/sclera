@@ -144,9 +144,9 @@ func HandleUserPasswordUpdation(ctx context.Context, pool *pgxpool.Pool, hashedU
 	return true, nil
 }
 
-func HandleEmailAndIdCheck(ctx context.Context, pool *pgxpool.Pool, userID int) (string, error) {
+func HandleEmailCheck(ctx context.Context, pool *pgxpool.Pool, userEmail string) (string, error) {
 	var fetchedEmail string
-	err := pool.QueryRow(ctx, `SELECT email FROM sclera.users WHERE id=$1`, userID).Scan(&fetchedEmail)
+	err := pool.QueryRow(ctx, `SELECT email FROM sclera.users WHERE email=$1`, userEmail).Scan(&fetchedEmail)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			log.Println("No user with this id exists")
@@ -157,4 +157,24 @@ func HandleEmailAndIdCheck(ctx context.Context, pool *pgxpool.Pool, userID int) 
 	}
 
 	return fetchedEmail, nil
+}
+
+func HandleFetchIdUsingEmail(ctx context.Context, pool *pgxpool.Pool, email string) (bool, int, error) {
+	var userID int
+
+	err := pool.QueryRow(ctx,
+		`SELECT id FROM sclera.users WHERE email = $1`, email).Scan(&userID)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			log.Println("No user with this email exists")
+			return false, 0, ErrNoUserFound
+		}
+		log.Println("An error occured while trying to fetch users ID")
+		return false, 0, err
+	}
+
+	log.Println("Successfully fetched user data")
+	return true, userID, nil
+
 }
