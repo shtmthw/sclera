@@ -106,7 +106,7 @@ var parseUpdateAccountTemp = template.Must(template.ParseFiles("userHandling/upd
 var parseOTPverificationTemp = template.Must(template.ParseFiles("userHandling/OTPverification.html"))
 var parseUpdatePasswordTemp = template.Must(template.ParseFiles("userHandling/updatePassword.html"))
 
-func handleTokenEdgeCase(w http.ResponseWriter, r *http.Request) bool {
+func handleTokenEdgeCase(w http.ResponseWriter, r *http.Request) int {
 	cookie, err := r.Cookie("Authorization")
 
 	//edge case handling and token verification
@@ -125,7 +125,7 @@ func handleTokenEdgeCase(w http.ResponseWriter, r *http.Request) bool {
 
 			// this is the close http contact or a preccesion call
 			http.Redirect(w, r, "/loginUser", http.StatusSeeOther)
-			return false
+			return 0 // meaning invalid token
 		}
 
 		//if the token do pass the verification
@@ -136,13 +136,41 @@ func handleTokenEdgeCase(w http.ResponseWriter, r *http.Request) bool {
 
 		if writeErr != nil {
 			throwHTTPErrAndLog("error while trying to write response", writeErr, "An error occured while trying to write the response", w, http.StatusInternalServerError)
-			return false
+			return 0 // internal error
 		}
 
-		return false
+		return 1 // valid token
 	}
 
-	return true
+	return 3 // token doesnt exist
+}
+
+// this is only used for /sendVerificationMail api
+func handleTokenEdgeCase2(w http.ResponseWriter, r *http.Request) int {
+	cookie, err := r.Cookie("Authorization")
+
+	//edge case handling and token verification
+	if err == nil {
+		//if the token doesnt pass the verification, meaning user modified their token themseleves
+		//and a token provided by the server will 100% of the time include the "Bearer " infront of it
+
+		tokenString := strings.TrimPrefix(cookie.Value, "Bearer ")
+
+		_, err := authentication.VerifyToken(tokenString)
+		if err != nil {
+
+			// Write the Set-Cookie header to the response
+			// will not cause a superflous error as this is a declaration not a proccesion
+			instantCookieDeletion(w, "Authorization", "/")
+
+			// this is the close http contact or a preccesion call
+			http.Redirect(w, r, "/loginUser", http.StatusSeeOther)
+			return 0 // meaning invalid token
+		}
+		return 1 // valid token
+	}
+
+	return 3 // token doesnt exist
 }
 
 func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, template *template.Template) {
@@ -153,7 +181,7 @@ func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, 
 
 	stat := handleTokenEdgeCase(w, r)
 
-	if !stat {
+	if stat == 0 || stat == 1 {
 		return
 	}
 
@@ -427,16 +455,48 @@ func CallDeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 // goes thru to middleware to make sure user is authenticated
 // loads the http template to the user
+type updateAccountPageData struct {
+	Name            string
+	FavouriteTopics map[string]bool
+}
 
-func CallUpdateUserClientSide() http.HandlerFunc {
+func CallUpdateUserClientSide(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		stat := verifyHTTPMethod(w, r, http.MethodGet)
 		if !stat {
 			return
 		}
+		ctx := r.Context()
+
+		//apply error handing later
+		userID, _ := ctx.Value(middleware.UserIDkey).(int)
+
+		stat, user, err := handlers.HandleGetUserData(ctx, pool, userID)
+
+		if err != nil {
+			if errors.Is(err, handlers.ErrNoUserFound) {
+				throwHTTPErrAndLog("No user with this id exists in the database, err:", handlers.ErrNoUserFound, "The id has not been used to create an user.", w, http.StatusBadRequest)
+				return
+			}
+			throwHTTPErrAndLog("an error occured while getting user data, err: ", err, "error finding user", w, http.StatusInternalServerError)
+			return
+		}
+
+		topicsMap := make(map[string]bool, len(user.FavouriteTopics))
+
+		for _, t := range user.FavouriteTopics {
+			topicsMap[t] = true
+		}
+
+		data := updateAccountPageData{
+
+			Name:            user.Name,
+			FavouriteTopics: topicsMap,
+		}
+
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-		tempParseErrr := parseUpdateAccountTemp.Execute(w, nil)
+		tempParseErrr := parseUpdateAccountTemp.Execute(w, data)
 
 		if tempParseErrr != nil {
 			throwHTTPErrAndLog("failed to render template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
@@ -594,9 +654,9 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 			return
 		}
 
-		tStat := handleTokenEdgeCase(w, r)
+		tStat := handleTokenEdgeCase2(w, r)
 
-		if !tStat {
+		if tStat == 0 {
 			return
 		}
 
