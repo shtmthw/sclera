@@ -471,7 +471,7 @@ func CallUpdateUserClientSide(pool *pgxpool.Pool) http.HandlerFunc {
 		//apply error handing later
 		userID, _ := ctx.Value(middleware.UserIDkey).(int)
 
-		_, user, err := handlers.HandleGetUserData(ctx, pool, userID)
+		_, user, err := handlers.HandleGetUserData(ctx, pool, userID) //
 
 		if err != nil {
 			if errors.Is(err, handlers.ErrNoUserFound) {
