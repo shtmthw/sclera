@@ -1,64 +1,363 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Update Account & Preferences</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Update Account & Preferences</title>
+<style>
+
+  :root {
+    --ink: #10131A;
+    --ink-raised: #171B24;
+    --hairline: #262B36;
+    --text: #EDEFF3;
+    --text-dim: #8B92A3;
+    --signal: #35D68C;
+    --signal-dim: #1F8C5C;
+    --error: #E5636B;
+    --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--ink);
+    color: var(--text);
+    font-family: var(--font-body);
+    padding: 24px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  .card {
+    width: 100%;
+    max-width: 480px;
+    animation: rise 420ms ease-out;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: var(--ink-raised);
+    border: 1px solid var(--hairline);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 28px;
+  }
+
+  .mark svg { width: 18px; height: 18px; }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 8px;
+  }
+
+  .sub {
+    color: var(--text-dim);
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 0 0 28px;
+    max-width: 40ch;
+  }
+
+  label.field-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+
+  .field {
+    margin-bottom: 20px;
+  }
+
+  input[type="text"],
+  input[type="password"],
+  input[type="email"] {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 15px;
+    color: var(--text);
+    background: var(--ink-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    outline: none;
+    font-family: inherit;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+  }
+
+  input:focus {
+    border-color: var(--signal-dim);
+    box-shadow: 0 0 0 3px rgba(53, 214, 140, 0.15);
+  }
+
+  legend {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-dim);
+    padding: 0;
+    margin-bottom: 10px;
+  }
+
+  fieldset {
+    border: none;
+    padding: 0;
+    margin: 0 0 20px;
+  }
+
+  .topic-count {
+    font-size: 12px;
+    color: var(--text-dim);
+    font-weight: 400;
+  }
+
+  .chip-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+  }
+
+  .chip {
+    position: relative;
+  }
+
+  .chip input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .chip span {
+    display: block;
+    text-align: center;
+    padding: 10px 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-dim);
+    background: var(--ink-raised);
+    border: 1px solid var(--hairline);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+    user-select: none;
+  }
+
+  .chip input:checked + span {
+    background: var(--signal);
+    border-color: var(--signal);
+    color: #0A1510;
+  }
+
+  .chip input:disabled:not(:checked) + span {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .chip input:focus-visible + span {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+
+  button.submit {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    background: var(--signal);
+    color: #0A1510;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity 140ms ease, transform 80ms ease;
+  }
+
+  button.submit:not(:disabled):active { transform: scale(0.99); }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--hairline);
+    margin: 28px 0 20px;
+  }
+
+  .forgot-row {
+    text-align: center;
+  }
+
+  .link-btn {
+    background: none;
+    border: none;
+    color: var(--signal);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  #changePasswordForm {
+    margin-top: 16px;
+  }
+
+  #changePasswordForm .field {
+    margin-bottom: 12px;
+  }
+
+  button:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 2px;
+  }
+</style>
 </head>
 <body>
-    <h1>Update your account and select new topics</h1>
 
-    <form action="/updateUserAccount" method="POST">
-        <div>
-            <input type="text" name="name" placeholder="Your name" required>
-        </div>
+<div class="card">
 
-        <fieldset>
-            <legend>Select up to 5 topics:</legend>
-            <label><input type="checkbox" name="items" value="fish"> Fish</label><br>
-            <label><input type="checkbox" name="items" value="chicken"> Chicken</label><br>
-            <label><input type="checkbox" name="items" value="pig"> Pig</label><br>
-            <label><input type="checkbox" name="items" value="beef"> Beef</label><br>
-            <label><input type="checkbox" name="items" value="eggs"> Eggs</label><br>
-            <label><input type="checkbox" name="items" value="lettuce"> Lettuce</label>
-        </fieldset>
+  <div class="mark">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="12" cy="8" r="3.2" stroke="#35D68C" stroke-width="1.6"/>
+      <path d="M5 19c1.2-3.2 4-5 7-5s5.8 1.8 7 5" stroke="#35D68C" stroke-width="1.6" stroke-linecap="round"/>
+    </svg>
+  </div>
 
-        <div>
-            <input type="password" name="password" placeholder="Your password" required>
-        </div>
-        
-        <button type="submit">Submit</button>
-    </form>
+  <h1>Update your account</h1>
+  <p class="sub">Edit your name and pick up to 5 topics you're interested in.</p>
 
-    <hr>
+  <form action="/updateUserAccount" method="POST">
 
-    <button type="button" id="forgotBtn">Forgot your password?</button>
+    <div class="field">
+      <label class="field-label" for="name">Name</label>
 
-    <form id="changePasswordForm" action="/sendVerificationMail" method="POST" style="display: none;">
-        <input type="email" name="email" placeholder="Your email" required>
-        <button type="submit">Send OTP to my email account</button>
-    </form>
+      <input type="text" id="name" name="name" placeholder="Your name" value="{{.Name}}" required>
+    </div>
 
-    <script>
-        // Limit checkbox selection to 5 items
-        const checkboxes = document.querySelectorAll('input[name="items"]');
-        checkboxes.forEach(cb => {
-            cb.addEventListener('change', () => {
-                const checkedCount = document.querySelectorAll('input[name="items"]:checked').length;
-                checkboxes.forEach(box => {
-                    box.disabled = checkedCount >= 5 && !box.checked;
-                });
-            });
-        });
+    <fieldset>
+      <legend>Select up to 5 topics <span class="topic-count" id="topicCount"></span></legend>
+      <div class="chip-grid">
 
-        // Toggle visibility for forgot password form
-        const forgotBtn = document.getElementById('forgotBtn');
-        const changePasswordForm = document.getElementById('changePasswordForm');
-        
-        forgotBtn.addEventListener('click', () => {
-            const isHidden = changePasswordForm.style.display === 'none';
-            changePasswordForm.style.display = isHidden ? 'block' : 'none';
-        });
-    </script>
+        <label class="chip">
+          <input type="checkbox" name="items" value="fish" {{if index .FavouriteTopics "fish"}}checked{{end}}>
+          <span>Fish</span>
+        </label>
+        <label class="chip">
+          <input type="checkbox" name="items" value="chicken" {{if index .FavouriteTopics "chicken"}}checked{{end}}>
+          <span>Chicken</span>
+        </label>
+        <label class="chip">
+          <input type="checkbox" name="items" value="pig" {{if index .FavouriteTopics "pig"}}checked{{end}}>
+          <span>Pig</span>
+        </label>
+        <label class="chip">
+          <input type="checkbox" name="items" value="beef" {{if index .FavouriteTopics "beef"}}checked{{end}}>
+          <span>Beef</span>
+        </label>
+        <label class="chip">
+          <input type="checkbox" name="items" value="eggs" {{if index .FavouriteTopics "eggs"}}checked{{end}}>
+          <span>Eggs</span>
+        </label>
+        <label class="chip">
+          <input type="checkbox" name="items" value="lettuce" {{if index .FavouriteTopics "lettuce"}}checked{{end}}>
+          <span>Lettuce</span>
+        </label>
+        <label class="chip">
+          <input type="checkbox" name="items" value="apple" {{if index .FavouriteTopics "apple"}}checked{{end}}>
+          <span>Apple</span>
+        </label>
+        <label class="chip">
+          <input type="checkbox" name="items" value="banana" {{if index .FavouriteTopics "banana"}}checked{{end}}>
+          <span>Banana</span>
+        </label>
+        <label class="chip">
+          <input type="checkbox" name="items" value="cherry" {{if index .FavouriteTopics "cherry"}}checked{{end}}>
+          <span>Cherry</span>
+        </label>
+        <label class="chip">
+          <input type="checkbox" name="items" value="date" {{if index .FavouriteTopics "date"}}checked{{end}}>
+          <span>Date</span>
+        </label>
+        <label class="chip">
+          <input type="checkbox" name="items" value="egg" {{if index .FavouriteTopics "egg"}}checked{{end}}>
+          <span>Egg</span>
+        </label>
+        <label class="chip">
+          <input type="checkbox" name="items" value="fig" {{if index .FavouriteTopics "fig"}}checked{{end}}>
+          <span>Fig</span>
+        </label>
+      </div>
+    </fieldset>
+
+    <div class="field">
+      <label class="field-label" for="password">Confirm with your password</label>
+      <input type="password" id="password" name="password" placeholder="Your password" required>
+    </div>
+
+    <button type="submit" class="submit">Save changes</button>
+  </form>
+
+  <hr>
+
+  <div class="forgot-row">
+    <button type="button" class="link-btn" id="forgotBtn">Forgot your password?</button>
+  </div>
+
+  <form id="changePasswordForm" action="/sendVerificationMail" method="POST" style="display: none;">
+    <div class="field">
+      <input type="email" name="email" placeholder="Your email" required>
+    </div>
+    <button type="submit" class="submit">Send OTP to my email</button>
+  </form>
+
+</div>
+
+<script>
+
+  const checkboxes = document.querySelectorAll('input[name="items"]');
+  const topicCountEl = document.getElementById('topicCount');
+
+  function updateCheckboxLimit() {
+    const checkedCount = document.querySelectorAll('input[name="items"]:checked').length;
+    checkboxes.forEach(box => {
+      box.disabled = checkedCount >= 5 && !box.checked;
+    });
+    topicCountEl.textContent = `(${checkedCount}/5)`;
+  }
+
+  checkboxes.forEach(cb => {
+    cb.addEventListener('change', updateCheckboxLimit);
+  });
+
+  updateCheckboxLimit(); // run once on load to reflect server-rendered checked state
+
+  // ---------- Toggle visibility for forgot password form ----------
+  // Unchanged from before.
+  const forgotBtn = document.getElementById('forgotBtn');
+  const changePasswordForm = document.getElementById('changePasswordForm');
+
+  forgotBtn.addEventListener('click', () => {
+    const isHidden = changePasswordForm.style.display === 'none';
+    changePasswordForm.style.display = isHidden ? 'block' : 'none';
+  });
+</script>
+
 </body>
 </html>
+

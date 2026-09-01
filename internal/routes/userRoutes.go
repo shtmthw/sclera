@@ -18,7 +18,7 @@ func RegisterUserRoutes(mux *http.ServeMux, pool *pgxpool.Pool, redisClient *red
 	mux.HandleFunc("/newUser", httpcallers.CallNewUser())
 	mux.HandleFunc("/loginUser", httpcallers.CallLoginUser())
 	mux.HandleFunc("/verifyLogin", httpcallers.CallVerifyUser(pool))
-	mux.HandleFunc("/updateAccout", middleware.CheckJwtToken(httpcallers.CallUpdateUserClientSide()))
+	mux.HandleFunc("/updateAccout", middleware.CheckJwtToken(httpcallers.CallUpdateUserClientSide(pool)))
 	mux.HandleFunc("/updateUserAccount", middleware.CheckJwtToken(httpcallers.CallUpdateUserServerSide(pool)))
 	mux.HandleFunc("/sendVerificationMail", httpcallers.CallSendVerificationMail(resendClient, pool, redisClient))
 	mux.HandleFunc("/inputOTP", httpcallers.CallVerifyOTPclientSide())
