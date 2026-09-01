@@ -34,8 +34,22 @@ func throwHTTPErrAndLog(logText string, logErr error, errorText string, w http.R
 	http.Error(w, errorText, httpStat)
 }
 
+func verifyHTTPMethod(w http.ResponseWriter, r *http.Request, allowedMethod string) bool {
+	if r.Method != allowedMethod {
+		// Log and throw the error dynamically
+		errMsg := fmt.Sprintf("The method %s is UNAUTHORIZED. Expected %s.", r.Method, allowedMethod)
+		throwHTTPErrAndLog("unauthorized method!", nil, errMsg, w, http.StatusMethodNotAllowed)
+		return false // Validation failed
+	}
+	return true // Validation passed
+}
+
 func CallGetUser(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stat := verifyHTTPMethod(w, r, http.MethodGet)
+		if !stat {
+			return
+		}
 		ctx := r.Context()
 
 		userID, ok := ctx.Value(middleware.UserIDkey).(int) //this .(int) is NOT typecasting the value of type any, it is there to TYPECHECK what the actual type of the type any value is
@@ -92,10 +106,7 @@ var parseUpdateAccountTemp = template.Must(template.ParseFiles("userHandling/upd
 var parseOTPverificationTemp = template.Must(template.ParseFiles("userHandling/OTPverification.html"))
 var parseUpdatePasswordTemp = template.Must(template.ParseFiles("userHandling/updatePassword.html"))
 
-func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, template *template.Template) {
-
-	//check if user has already made an account and if he did show a diff html result
-	//make use one html file is used an dynamically set
+func handleTokenEdgeCase(w http.ResponseWriter, r *http.Request) bool {
 	cookie, err := r.Cookie("Authorization")
 
 	//edge case handling and token verification
@@ -107,24 +118,14 @@ func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, 
 
 		_, err := authentication.VerifyToken(tokenString)
 		if err != nil {
-			c := &http.Cookie{
-				Name:     "Authorization",
-				Value:    "",              // Clear the value
-				Path:     "/",             // Must match the original path
-				MaxAge:   -1,              // Signals immediate deletion
-				Expires:  time.Unix(0, 0), // Backward compatibility for older browsers
-				HttpOnly: true,
-				SameSite: http.SameSiteLaxMode,
-				Secure:   false,
-			}
 
 			// Write the Set-Cookie header to the response
 			// will not cause a superflous error as this is a declaration not a proccesion
-			http.SetCookie(w, c)
+			instantCookieDeletion(w, "Authorization", "/")
 
 			// this is the close http contact or a preccesion call
 			http.Redirect(w, r, "/loginUser", http.StatusSeeOther)
-			return
+			return false
 		}
 
 		//if the token do pass the verification
@@ -135,9 +136,24 @@ func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, 
 
 		if writeErr != nil {
 			throwHTTPErrAndLog("error while trying to write response", writeErr, "An error occured while trying to write the response", w, http.StatusInternalServerError)
-			return
+			return false
 		}
 
+		return false
+	}
+
+	return true
+}
+
+func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, template *template.Template) {
+
+	//check if user has already made an account and if he did show a diff html result
+	//make use one html file is used an dynamically set
+	//handles the token edge cases also
+
+	stat := handleTokenEdgeCase(w, r)
+
+	if !stat {
 		return
 	}
 
@@ -162,12 +178,11 @@ func CallNewUser() http.HandlerFunc {
 func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-		// verify the request
-		if r.Method != http.MethodPost {
-			throwHTTPErrAndLog("unauthorized method!", nil, "The method you are trying to execute is UNAUTHORIZED", w, http.StatusMethodNotAllowed)
+		stat := verifyHTTPMethod(w, r, http.MethodPost)
+		if !stat {
 			return
 		}
+		ctx := r.Context()
 
 		err := r.ParseForm()
 
@@ -255,7 +270,10 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 // same logic as CallNewUser
 func CallLoginUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-
+		stat := verifyHTTPMethod(w, r, http.MethodGet)
+		if !stat {
+			return
+		}
 		loadTemplateAndHandleTokenEdgeCase(w, r, parseLoginAccountTemp)
 
 	}
@@ -264,12 +282,11 @@ func CallLoginUser() http.HandlerFunc {
 // process the html form data and return accordingly
 func CallVerifyUser(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
-
-		if r.Method != http.MethodPost {
-			throwHTTPErrAndLog("unauthorized method!", nil, "The method you are trying to execute is UNAUTHORIZED", w, http.StatusMethodNotAllowed)
+		stat := verifyHTTPMethod(w, r, http.MethodPost)
+		if !stat {
 			return
 		}
+		ctx := r.Context()
 
 		parseErr := r.ParseForm()
 
@@ -327,6 +344,11 @@ func CallVerifyUser(pool *pgxpool.Pool) http.HandlerFunc {
 // put this thru the middleware as user cant logout if hes not logged in at the first place, same for the /deleteAccount api
 func CallLogoutUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stat := verifyHTTPMethod(w, r, http.MethodPost)
+		if !stat {
+			return
+		}
+
 		_, err := r.Cookie("Authorization")
 		if err != nil {
 			log.Println("", err)
@@ -358,9 +380,17 @@ func CallLogoutUser() http.HandlerFunc {
 // call a database look up the uses existance and perform the deletion of both the user data and cookie
 func CallDeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stat := verifyHTTPMethod(w, r, http.MethodPost)
+		if !stat {
+			return
+		}
 		ctx := r.Context()
 
-		userID := ctx.Value(middleware.UserIDkey).(int)
+		userID, ok := ctx.Value(middleware.UserIDkey).(int) //this .(int) is NOT typecasting the value of type any, it is there to TYPECHECK what the actual type of the type any value is
+		if !ok {
+			throwHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
+			return
+		}
 		_, err := handlers.HandleUserDataDeletion(ctx, pool, userID)
 		// maybe someday ill need the stat bool in use :((
 
@@ -400,6 +430,10 @@ func CallDeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 func CallUpdateUserClientSide() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stat := verifyHTTPMethod(w, r, http.MethodGet)
+		if !stat {
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 		tempParseErrr := parseUpdateAccountTemp.Execute(w, nil)
@@ -414,8 +448,17 @@ func CallUpdateUserClientSide() http.HandlerFunc {
 // should make sure the given pass is right
 func CallUpdateUserServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stat := verifyHTTPMethod(w, r, http.MethodPost)
+		if !stat {
+			return
+		}
+
 		ctx := r.Context()
-		userID := ctx.Value(middleware.UserIDkey).(int)
+		userID, ok := ctx.Value(middleware.UserIDkey).(int) //this .(int) is NOT typecasting the value of type any, it is there to TYPECHECK what the actual type of the type any value is
+		if !ok {
+			throwHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
+			return
+		}
 
 		parseErr := r.ParseForm()
 
@@ -425,11 +468,6 @@ func CallUpdateUserServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 		}
 
 		var userData models.UpdatedUser
-
-		if r.Method != http.MethodPost {
-			throwHTTPErrAndLog("unauthorized method!", nil, "The method you are trying to execute is UNAUTHORIZED", w, http.StatusMethodNotAllowed)
-			return
-		}
 
 		//get the hashed pass
 		_, hashedPassword, err := handlers.HandleHashedPasswordFetch(ctx, pool, userID)
@@ -523,9 +561,9 @@ func buildOTPEmailHTML(otp string) string {
 }
 
 // makes sures if the ID the user is currently logged in is also the ID the user provided Email
-func checkEmailAndIDRelation(userGivenEmail string, userID int, ctx context.Context, pool *pgxpool.Pool) error {
+func checkEmailAndIDRelation(userGivenEmail string, ctx context.Context, pool *pgxpool.Pool) error {
 
-	email, err := handlers.HandleEmailAndIdCheck(ctx, pool, userID)
+	email, err := handlers.HandleEmailCheck(ctx, pool, userGivenEmail)
 	if err != nil {
 		if errors.Is(err, handlers.ErrNoUserFound) {
 			return handlers.ErrNoUserFound
@@ -542,10 +580,12 @@ func checkEmailAndIDRelation(userGivenEmail string, userID int, ctx context.Cont
 // this is /sendVerificationMail
 func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, redisClient *redis.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stat := verifyHTTPMethod(w, r, http.MethodPost)
+		if !stat {
+			return
+		}
 
 		ctx := r.Context()
-		intUserID := ctx.Value(middleware.UserIDkey).(int)
-		stringUserID := strconv.Itoa(intUserID)
 		parseErr := r.ParseForm()
 		var userEmail string
 
@@ -554,8 +594,9 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 			return
 		}
 
-		if r.Method != http.MethodPost {
-			throwHTTPErrAndLog("unauthorized method!", nil, "The method you are trying to execute is UNAUTHORIZED", w, http.StatusMethodNotAllowed)
+		tStat := handleTokenEdgeCase(w, r)
+
+		if !tStat {
 			return
 		}
 
@@ -569,7 +610,7 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 					throwHTTPErrAndLog("provided email is empty", nil, "Please fill up the email field.", w, http.StatusBadRequest)
 					return
 				}
-				emailCheckErr := checkEmailAndIDRelation(userEmail, intUserID, ctx, pool)
+				emailCheckErr := checkEmailAndIDRelation(userEmail, ctx, pool)
 
 				if emailCheckErr != nil {
 					throwHTTPErrAndLog("Email is not connected to users ID", emailCheckErr, "Please provide the correct email.", w, http.StatusBadRequest)
@@ -589,7 +630,7 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 		}
 
 		//	OTP CREATION
-		OTP, otpCreationError := authentication.CreateOTP(stringUserID, ctx, redisClient)
+		OTP, otpCreationError := authentication.CreateOTP(userEmail, ctx, redisClient)
 
 		if otpCreationError != nil {
 			if errors.Is(otpCreationError, authentication.ErrOTPcoolDown) {
@@ -620,7 +661,7 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 		emailCookie := &http.Cookie{
 			Name:     "Email",   // Legal name string
 			Value:    userEmail, // Value becomes: "mathiwasbaroi@gmail.com"
-			Path:     "/sendVerificationMail",
+			Path:     "/",
 			MaxAge:   5 * 60,
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
@@ -631,7 +672,7 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 
 		log.Printf("Email sent successfully! ID: %s\n", sent.Id)
 
-		http.Redirect(w, r, "/inputOTP", http.StatusSeeOther)
+		http.Redirect(w, r, "/inputOTP", http.StatusTemporaryRedirect)
 
 	}
 }
@@ -641,6 +682,10 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 // this is /inputOTP
 func CallVerifyOTPclientSide() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stat := verifyHTTPMethod(w, r, http.MethodPost)
+		if !stat {
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 		tempParseErrr := parseOTPverificationTemp.Execute(w, nil)
@@ -649,6 +694,7 @@ func CallVerifyOTPclientSide() http.HandlerFunc {
 			throwHTTPErrAndLog("failed to render template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
 			return
 		}
+
 	}
 }
 
@@ -669,19 +715,23 @@ func instantCookieDeletion(w http.ResponseWriter, name string, path string) {
 }
 
 // this is /veriyOTP
-func CallVerifyOTPserverSide(redisClient *redis.Client) http.HandlerFunc {
+func CallVerifyOTPserverSide(redisClient *redis.Client, pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stat := verifyHTTPMethod(w, r, http.MethodPost)
+		if !stat {
+			return
+		}
 		parseErr := r.ParseForm()
 		ctx := r.Context()
-		intUserID := ctx.Value(middleware.UserIDkey).(int)
-		strUserID := strconv.Itoa(intUserID)
+		userEmail, err := r.Cookie("Email")
+		if err != nil {
+			log.Println("", err)
+			throwHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", err, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
+			return
+		}
 
 		if parseErr != nil {
 			throwHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
-			return
-		}
-		if r.Method != http.MethodPost {
-			throwHTTPErrAndLog("unauthorized method!", nil, "The method you are trying to execute is UNAUTHORIZED", w, http.StatusMethodNotAllowed)
 			return
 		}
 		userInputOTP := r.FormValue("otp")
@@ -691,12 +741,12 @@ func CallVerifyOTPserverSide(redisClient *redis.Client) http.HandlerFunc {
 			return
 		}
 
-		verificationErr := authentication.VerifyOTP(strUserID, ctx, userInputOTP, redisClient)
+		verificationErr := authentication.VerifyOTP(userEmail.Value, ctx, userInputOTP, redisClient)
 
 		if verificationErr != nil {
 			if errors.Is(verificationErr, authentication.ErrMaxAttempts) {
 
-				instantCookieDeletion(w, "Email", "/sendVerificationMail")
+				instantCookieDeletion(w, "Email", "/")
 				log.Println("too many attempts, please request a new OTP")
 				http.Redirect(w, r, "/updateAccout", http.StatusSeeOther)
 				return
@@ -712,7 +762,40 @@ func CallVerifyOTPserverSide(redisClient *redis.Client) http.HandlerFunc {
 		log.Println("users OTP sucessfully verified")
 
 		//deltes the email cookie upon sucessfully verifying the OTP
-		instantCookieDeletion(w, "Email", "/sendVerificationMail")
+		instantCookieDeletion(w, "Email", "/")
+
+		//add a new authorization cookie, as OTP verification also marks the user as authentic
+		_, userID, idErr := handlers.HandleFetchIdUsingEmail(ctx, pool, userEmail.Value)
+
+		if idErr != nil {
+			if errors.Is(idErr, handlers.ErrNoUserFound) {
+				throwHTTPErrAndLog("No user with this email exists in database", handlers.ErrNoUserFound, "The email provided is INVALID", w, http.StatusBadRequest)
+				return
+			}
+			throwHTTPErrAndLog("An error occured while trying to fetch userID from db", idErr, "An error occured while trying to fetch your ID form the database", w, http.StatusInternalServerError)
+			return
+		}
+
+		tokenString, err := authentication.CreateToken(userID)
+
+		if err != nil {
+			throwHTTPErrAndLog("Error occured while making an JWT token using the created users ID", err, "Error occured while creating an token for you.", w, http.StatusInternalServerError)
+			return
+		}
+
+		fullCookieValue := "Bearer " + tokenString
+
+		authCookie := &http.Cookie{
+			Name:     "Authorization", // Legal name string
+			Value:    fullCookieValue, // Value becomes: "Bearer 752059293"
+			Path:     "/",             // Available on all endpoints
+			MaxAge:   7 * 24 * 60 * 60,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   false, // Set to true in production over HTTPS
+		}
+
+		http.SetCookie(w, authCookie)
 
 		http.Redirect(w, r, "/updateUsersPassword", http.StatusSeeOther)
 	}
@@ -723,18 +806,24 @@ func CallVerifyOTPserverSide(redisClient *redis.Client) http.HandlerFunc {
 // check if the passwords are same or not, if same dont allow user to change it BUT KEEP THE FUNC RUNNING, if the pass is diff then let user change it
 func CallUpdateUserPasswordServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stat := verifyHTTPMethod(w, r, http.MethodPost)
+		if !stat {
+			return
+		}
+
 		ctx := r.Context()
-		userID := ctx.Value(middleware.UserIDkey).(int)
+		userID, ok := ctx.Value(middleware.UserIDkey).(int) //this .(int) is NOT typecasting the value of type any, it is there to TYPECHECK what the actual type of the type any value is
+		if !ok {
+			throwHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
+			return
+		}
 		parseErr := r.ParseForm()
 
 		if parseErr != nil {
 			throwHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
 			return
 		}
-		if r.Method != http.MethodPost {
-			throwHTTPErrAndLog("unauthorized method!", nil, "The method you are trying to execute is UNAUTHORIZED", w, http.StatusMethodNotAllowed)
-			return
-		}
+
 		plaintTextPassword := r.FormValue("password")
 
 		//hash the users password
@@ -765,6 +854,10 @@ func CallUpdateUserPasswordServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 // this is /updateUsersPassword
 func CallUpdateUserPasswordClientSide() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stat := verifyHTTPMethod(w, r, http.MethodGet)
+		if !stat {
+			return
+		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 		tempParseErrr := parseUpdatePasswordTemp.Execute(w, nil)
