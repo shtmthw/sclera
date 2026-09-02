@@ -29,6 +29,7 @@ func RunServer(pool *pgxpool.Pool, redisClient *redis.Client, resendClient *rese
 
 	//assigns the mux router/ServeMux ( has .HandleFunc within it ) to connect the endpoints to the handlerfuncs
 	routes.RegisterUserRoutes(mux, pool, redisClient, resendClient)
+	routes.RegisterGemmaRoutes(mux)
 
 	//creates the server and hosts the mux handler to the provided port.
 	server := newServer(mux)

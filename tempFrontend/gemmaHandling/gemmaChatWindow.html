@@ -1,0 +1,42 @@
+<div id="chatWindow"></div>
+
+<form id="chatForm">
+  <input type="text" name="userSentMessage" id="msgInput" autocomplete="off">
+  <button type="submit">Send</button>
+</form>
+
+<script>
+document.getElementById("chatForm").addEventListener("submit", async (e) => {
+  e.preventDefault(); // stop the normal full-page form submission
+
+  const input = document.getElementById("msgInput");
+  const message = input.value.trim();
+  if (!message) return;
+
+  const chatWindow = document.getElementById("chatWindow");
+  chatWindow.innerHTML += `<div class="user-msg">${message}</div>`;
+  input.value = "";
+
+  const formData = new URLSearchParams();
+  formData.append("userSentMessage", message);
+
+  try {
+    const res = await fetch("/processUserSentMessage", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      chatWindow.innerHTML += `<div class="error-msg">Error: ${errText}</div>`;
+      return;
+    }
+
+    const data = await res.json();
+    chatWindow.innerHTML += `<div class="gemma-msg">${data.reply}</div>`;
+  } catch (err) {
+    chatWindow.innerHTML += `<div class="error-msg">Request failed: ${err}</div>`;
+  }
+});
+</script>
