@@ -60,12 +60,11 @@ func callOllama(prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer func() error {
+	defer func() {
 		err := resp.Body.Close()
 		if err != nil {
-			return err
+			return
 		}
-		return nil
 
 	}()
 	// 4. Validate HTTP response code

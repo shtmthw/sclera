@@ -53,12 +53,12 @@ func SearchWeb(ctx context.Context, query string) (string, error) {
 		return "", fmt.Errorf("calling searxng: %w", err)
 	}
 
-	defer func() error {
+	defer func() {
 		rerr := resp.Body.Close()
 		if rerr != nil {
-			return rerr
+			return
 		}
-		return nil
+
 	}()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
