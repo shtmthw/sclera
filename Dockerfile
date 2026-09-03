@@ -21,12 +21,13 @@ RUN go build -o main ./cmd/server
 FROM debian:bookworm-slim
 #and here starts the new image, a lightweight debian linux distro
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
-    
-# installs the CA certificate bundle into /etc/ssl/certs — bookworm-slim
+# installs the CA certificate and curl bundle into /etc/ssl/certs — bookworm-slim
 # ships with nothing here by default, so any outbound HTTPS call (Resend,
 # any other API) has no root certificates to verify the server's cert
 # against and fails closed with an x509 "unknown authority" error.
