@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,6 +29,8 @@ type searxResponse struct {
 
 func SearchWeb(ctx context.Context, query string) (string, error) {
 	baseURL := getSearXNGBaseURL()
+	log.Println("----------------------------------------STARTING SEARXNG LOOKUP------------------------------------")
+	log.Println("BaseUrl of searXNG: ", baseURL)
 
 	endpoint, err := url.Parse(
 		strings.TrimRight(baseURL, "/") + "/search",
@@ -38,12 +41,17 @@ func SearchWeb(ctx context.Context, query string) (string, error) {
 			err,
 		)
 	}
+	log.Println("Parsed searXNG url: ", *endpoint)
 
 	params := endpoint.Query()
 	params.Set("q", query)
 	params.Set("format", "json")
 
+	log.Println("Unencoded params: ", params)
+
 	endpoint.RawQuery = params.Encode()
+
+	log.Println("encoded params: ", endpoint.RawQuery)
 
 	req, err := http.NewRequestWithContext(
 		ctx,
@@ -88,6 +96,7 @@ func SearchWeb(ctx context.Context, query string) (string, error) {
 			err,
 		)
 	}
+	log.Println("all parsed result of searXNG: ", parsed.Results)
 
 	if len(parsed.Results) == 0 {
 		return "No search results were found.", nil
@@ -99,7 +108,7 @@ func SearchWeb(ctx context.Context, query string) (string, error) {
 		parsed.Results = parsed.Results[:maxResults]
 	}
 
-	var b strings.Builder
+	var builderString strings.Builder
 
 	for i, result := range parsed.Results {
 		if result == nil {
@@ -107,7 +116,7 @@ func SearchWeb(ctx context.Context, query string) (string, error) {
 		}
 
 		fmt.Fprintf(
-			&b,
+			&builderString,
 			"%d. %s\nURL: %s\nContent: %s\n\n",
 			i+1,
 			result.Title,
@@ -115,13 +124,16 @@ func SearchWeb(ctx context.Context, query string) (string, error) {
 			result.Content,
 		)
 	}
+	log.Println("raw builderString: ", builderString)
+	resultText := strings.TrimSpace(builderString.String())
 
-	resultText := strings.TrimSpace(b.String())
+	log.Println("refined builderString: ", resultText)
 
 	if resultText == "" {
 		return "Search returned no usable results.", nil
 	}
 
+	log.Println("----------------------------------------ENDING SEARXNG LOOKUP------------------------------------")
 	return resultText, nil
 }
 
