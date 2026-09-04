@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chat</title>
+<style>
+  :root {
+    --bg: #0d1017;
+    --card-bg: #161a24;
+    --card-border: #262c3a;
+    --text: #f3f4f6;
+    --text-muted: #94a3b8;
+    --cream: #faf1bd;
+    --cream-border: #d8cd8f;
+    --green: #4ade80;
+    --green-dark: #22c55e;
+    --gemma-tag: #7dd3fc;
+    --oss-tag: #fbbf7d;
+    --error: #f87171;
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 48px 20px;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 480px;
+  }
+
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0 0 6px;
+    letter-spacing: -0.01em;
+  }
+
+  .subtitle {
+    color: var(--text-muted);
+    font-size: 14.5px;
+    line-height: 1.5;
+    margin: 0 0 28px;
+  }
+
+  .field {
+    margin-bottom: 20px;
+  }
+
+  .field label {
+    display: block;
+    font-size: 14px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  /* --- Model picker --- */
+  .model-select {
+    position: relative;
+  }
+
+  .model-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #12151d;
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    color: var(--text);
+    font-size: 15px;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .model-toggle:hover {
+    border-color: #3a4256;
+  }
+
+  .model-toggle:focus-visible,
+  .model-option:focus-visible,
+  #msgInput:focus-visible,
+  #sendBtn:focus-visible {
+    outline: 2px solid var(--green);
+    outline-offset: 2px;
+  }
+
+  .model-toggle .current {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .model-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gemma-tag);
+  }
+
+  .model-toggle[data-model="oss"] .model-dot {
+    background: var(--oss-tag);
+  }
+
+  .chevron {
+    width: 16px;
+    height: 16px;
+    stroke: var(--text-muted);
+    transition: transform 0.15s ease;
+  }
+
+  .model-select.open .chevron {
+    transform: rotate(180deg);
+  }
+
+  .model-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: #12151d;
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 6px;
+    display: flex;
+    gap: 6px;
+    z-index: 10;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+
+  .model-menu[hidden] { display: none; }
+
+  .model-option {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 10px 0;
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .model-option:hover {
+    border-color: #3a4256;
+    color: var(--text);
+  }
+
+  .model-option.active {
+    background: var(--green);
+    border-color: var(--green);
+    color: #0d1017;
+  }
+
+  /* --- Chat window --- */
+  .chat-window {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 16px;
+    height: 340px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .chat-window:empty::before {
+    content: "Say something to get started.";
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: auto;
+  }
+
+  .msg-row {
+    display: flex;
+    flex-direction: column;
+    max-width: 82%;
+  }
+
+  .msg-row.user { align-self: flex-end; align-items: flex-end; }
+  .msg-row.bot { align-self: flex-start; align-items: flex-start; }
+  .msg-row.error { align-self: center; max-width: 100%; }
+
+  .msg-tag {
+    font-size: 11.5px;
+    font-weight: 600;
+    margin-bottom: 3px;
+    color: var(--text-muted);
+  }
+
+  .msg-tag.gemma { color: var(--gemma-tag); }
+  .msg-tag.oss { color: var(--oss-tag); }
+
+  .bubble {
+    padding: 10px 13px;
+    border-radius: 12px;
+    font-size: 14.5px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .user-msg {
+    background: var(--cream);
+    color: #1a1a12;
+    border-bottom-right-radius: 4px;
+  }
+
+  .bot-msg {
+    background: #1e2330;
+    border: 1px solid var(--card-border);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+
+  .error-msg {
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.35);
+    color: var(--error);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    text-align: center;
+  }
+
+  /* --- Input form --- */
+  .chat-form {
+    display: flex;
+    gap: 10px;
+  }
+
+  #msgInput {
+    flex: 1;
+    background: var(--cream);
+    border: 1px solid var(--cream-border);
+    border-radius: var(--radius);
+    padding: 13px 14px;
+    font-size: 15px;
+    color: #1a1a12;
+  }
+
+  #msgInput::placeholder {
+    color: #8a825a;
+  }
+
+  #sendBtn {
+    background: var(--green);
+    border: none;
+    border-radius: var(--radius);
+    padding: 0 22px;
+    font-size: 15px;
+    font-weight: 700;
+    color: #0d1017;
+    cursor: pointer;
+    transition: background 0.12s ease;
+  }
+
+  #sendBtn:hover { background: var(--green-dark); }
+  #sendBtn:disabled { opacity: 0.6; cursor: default; }
+
+  @media (max-width: 400px) {
+    .chat-window { height: 280px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <h1>Chat</h1>
+  <p class="subtitle">Ask anything. Pick which model answers.</p>
+
+  <div class="field">
+    <label id="modelFieldLabel">Model</label>
+    <div class="model-select" id="modelSelect">
+      <button type="button"
+              class="model-toggle"
+              id="modelToggle"
+              data-model="gemma"
+              aria-haspopup="listbox"
+              aria-expanded="false"
+              aria-labelledby="modelFieldLabel">
+        <span class="current">
+          <span class="model-dot"></span>
+          <span id="modelLabel">Gemma</span>
+        </span>
+        <svg class="chevron" viewBox="0 0 24 24" fill="none">
+          <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <div class="model-menu" id="modelMenu" role="listbox" hidden>
+        <button type="button" class="model-option active" data-model="gemma" role="option" aria-selected="true">Gemma</button>
+        <button type="button" class="model-option" data-model="oss" role="option" aria-selected="false">OSS</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="chatWindow" class="chat-window"></div>
+
+  <form id="chatForm" class="chat-form">
+    <input type="text" name="userSentMessage" id="msgInput" autocomplete="off" placeholder="Type a message...">
+    <button type="submit" id="sendBtn">Send</button>
+  </form>
+</div>
+
+<script>
+  const ENDPOINTS = {
+    gemma: "/gemmaProcessUserSentMessage",
+    oss: "/OSSProcessUserSentMessage",
+  };
+
+  let selectedModel = "gemma";
+
+  const modelSelect = document.getElementById("modelSelect");
+  const modelToggle = document.getElementById("modelToggle");
+  const modelMenu = document.getElementById("modelMenu");
+  const modelLabel = document.getElementById("modelLabel");
+  const modelOptions = modelMenu.querySelectorAll(".model-option");
+
+  function openMenu() {
+    modelMenu.hidden = false;
+    modelSelect.classList.add("open");
+    modelToggle.setAttribute("aria-expanded", "true");
+  }
+
+  function closeMenu() {
+    modelMenu.hidden = true;
+    modelSelect.classList.remove("open");
+    modelToggle.setAttribute("aria-expanded", "false");
+  }
+
+  modelToggle.addEventListener("click", () => {
+    modelMenu.hidden ? openMenu() : closeMenu();
+  });
+
+  modelOptions.forEach((opt) => {
+    opt.addEventListener("click", () => {
+      selectedModel = opt.dataset.model;
+
+      modelOptions.forEach((o) => {
+        o.classList.toggle("active", o === opt);
+        o.setAttribute("aria-selected", o === opt ? "true" : "false");
+      });
+
+      modelLabel.textContent = opt.textContent;
+      modelToggle.dataset.model = selectedModel;
+      closeMenu();
+      document.getElementById("msgInput").focus();
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!modelSelect.contains(e.target)) closeMenu();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeMenu();
+  });
+
+  // --- Chat submission ---
+  const chatForm = document.getElementById("chatForm");
+  const chatWindow = document.getElementById("chatWindow");
+  const sendBtn = document.getElementById("sendBtn");
+
+  function appendUserMessage(text) {
+    const row = document.createElement("div");
+    row.className = "msg-row user";
+    row.innerHTML = `<div class="bubble user-msg"></div>`;
+    row.querySelector(".bubble").textContent = text;
+    chatWindow.appendChild(row);
+  }
+
+  function appendBotMessage(text, model) {
+    const row = document.createElement("div");
+    row.className = "msg-row bot";
+    const tagText = model === "oss" ? "OSS" : "Gemma";
+    const tagClass = model === "oss" ? "oss" : "gemma";
+    row.innerHTML = `<div class="msg-tag ${tagClass}">${tagText}</div><div class="bubble bot-msg"></div>`;
+    row.querySelector(".bubble").textContent = text;
+    chatWindow.appendChild(row);
+  }
+
+  function appendErrorMessage(text) {
+    const row = document.createElement("div");
+    row.className = "msg-row error";
+    row.innerHTML = `<div class="error-msg"></div>`;
+    row.querySelector(".error-msg").textContent = text;
+    chatWindow.appendChild(row);
+  }
+
+  function scrollToBottom() {
+    chatWindow.scrollTop = chatWindow.scrollHeight;
+  }
+
+  chatForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const input = document.getElementById("msgInput");
+    const message = input.value.trim();
+    if (!message) return;
+
+    appendUserMessage(message);
+    input.value = "";
+    scrollToBottom();
+
+    sendBtn.disabled = true;
+
+    const formData = new URLSearchParams();
+    formData.append("userSentMessage", message);
+
+    const endpoint = ENDPOINTS[selectedModel];
+    const modelAtSendTime = selectedModel;
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        appendErrorMessage(`Error: ${errText}`);
+        scrollToBottom();
+        return;
+      }
+
+      const data = await res.json();
+      appendBotMessage(data.reply, modelAtSendTime);
+      scrollToBottom();
+    } catch (err) {
+      appendErrorMessage(`Request failed: ${err}`);
+      scrollToBottom();
+    } finally {
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  });
+</script>
+
+</body>
+</html>
