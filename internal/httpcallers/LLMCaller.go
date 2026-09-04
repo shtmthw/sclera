@@ -41,8 +41,8 @@ func serverSideLLMboilerPlate(w http.ResponseWriter, r *http.Request, LLMcall fu
 	gemmaReply, gemmaErr := LLMcall(userSentMessage)
 
 	if gemmaErr != nil {
-		if errors.Is(gemmaErr, llm.OverLimitToolUsage) {
-			ThrowHTTPErrAndLog("AI request timed out, reason: LLM using too many Tool calls:", llm.OverLimitToolUsage, "Error occured while AI replying.", w, http.StatusInternalServerError)
+		if errors.Is(gemmaErr, llm.ErrOverLimitToolUsage) {
+			ThrowHTTPErrAndLog("AI request timed out, reason: LLM using too many Tool calls:", llm.ErrOverLimitToolUsage, "Error occured while AI replying.", w, http.StatusInternalServerError)
 			return
 		}
 

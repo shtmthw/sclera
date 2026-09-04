@@ -46,7 +46,7 @@ type ChatResponse struct {
 	Message Message `json:"message"`
 }
 
-var OverLimitToolUsage error = fmt.Errorf("gemma kept calling tools past allocated turns without answering")
+var ErrOverLimitToolUsage error = fmt.Errorf("gemma kept calling tools past allocated turns without answering")
 
 func AskGemma(userMessage string) (string, error) {
 	ctx := context.Background()
@@ -130,7 +130,7 @@ func AskGemma(userMessage string) (string, error) {
 		}
 	}
 
-	return "", OverLimitToolUsage
+	return "", ErrOverLimitToolUsage
 
 }
 

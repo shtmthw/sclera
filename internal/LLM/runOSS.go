@@ -169,7 +169,7 @@ func AskOss(userMessage string) (string, error) {
 		}
 	}
 
-	return "", OverLimitToolUsage
+	return "", ErrOverLimitToolUsage
 }
 
 func callOllamaOss(ctx context.Context, iteration int, messages []*OssMessage, tools []OssTool) (*OssMessage, error) {
