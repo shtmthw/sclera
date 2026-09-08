@@ -31,68 +31,68 @@ const OssModel = "gpt-oss:20b"
 
 // ---- Oss-specific message/tool types ----
 
-type OssToolCall struct {
-	Function OssToolCallFunction `json:"function"`
+type typeToolCall struct {
+	Function struct {
+		Name      string         `json:"name"`
+		Arguments map[string]any `json:"arguments"`
+	} `json:"function"`
 }
 
-type OssToolCallFunction struct {
-	Name      string         `json:"name"`
-	Arguments map[string]any `json:"arguments"`
+type typeOssMessage struct {
+	Role      string         `json:"role"`
+	Content   string         `json:"content"`
+	ToolCalls []typeToolCall `json:"tool_calls,omitempty"`
 }
 
-type OssMessage struct {
-	Role      string        `json:"role"`
-	Content   string        `json:"content"`
-	ToolCalls []OssToolCall `json:"tool_calls,omitempty"`
+type typeTool struct {
+	Type     string           `json:"type"`
+	Function typeToolFunction `json:"function"`
 }
 
-type OssTool struct {
-	Type     string          `json:"type"`
-	Function OssToolFunction `json:"function"`
+type typeToolFunction struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  typeParameters `json:"parameters"`
 }
 
-type OssToolFunction struct {
-	Name        string        `json:"name"`
-	Description string        `json:"description"`
-	Parameters  OssToolParams `json:"parameters"`
-}
-
-type OssToolParams struct {
-	Type       string                 `json:"type"`
-	Properties map[string]OssToolProp `json:"properties"`
-	Required   []string               `json:"required"`
-}
-
-type OssToolProp struct {
+type typeProperties struct {
 	Type        string `json:"type"`
 	Description string `json:"description"`
 }
 
+type typeParameters struct {
+	Type       string                    `json:"type"`
+	Properties map[string]typeProperties `json:"properties"`
+	Required   []string                  `json:"required"`
+}
+
 type OssChatRequest struct {
-	Model    string        `json:"model"`
-	Messages []*OssMessage `json:"messages"`
-	Stream   bool          `json:"stream"`
-	Tools    []OssTool     `json:"tools,omitempty"`
+	Model    string            `json:"model"`
+	Messages []*typeOssMessage `json:"messages"`
+	Stream   bool              `json:"stream"`
+	Tools    []typeTool        `json:"tools,omitempty"`
 	// No Format field here on purpose — do not combine Tools with
 	// Format:"json", gpt-oss can drop content entirely if you do.
 }
 
 type OssChatResponse struct {
-	Message OssMessage `json:"message"`
+	Message typeOssMessage `json:"message"`
 }
 
-var ossWebSearchTool = OssTool{
+// ---- ONLY TO SHAPE WHAT TOOL THE AI KNOWS ABOUT AND WHAT ARGUMENTS IT MUST SEND TO CALL IT ----
+
+var ossWebSearchTool = typeTool{
 	Type: "function",
-	Function: OssToolFunction{
+	Function: typeToolFunction{
 		Name: "web_search",
 		Description: "Search the public internet using SearXNG. Use this when the user " +
 			"asks about information that may have changed — current events, latest " +
 			"software versions, current prices, recent releases, current people or " +
 			"companies, or other time-sensitive facts. Do not use it for ordinary " +
 			"knowledge that doesn't require current information.",
-		Parameters: OssToolParams{
+		Parameters: typeParameters{
 			Type: "object",
-			Properties: map[string]OssToolProp{
+			Properties: map[string]typeProperties{
 				"query": {
 					Type:        "string",
 					Description: "The search query to run",
@@ -103,13 +103,15 @@ var ossWebSearchTool = OssTool{
 	},
 }
 
+// ---- ONLY TO SHAPE WHAT TOOL THE AI KNOWS ABOUT AND WHAT ARGUMENTS IT MUST SEND TO CALL IT ----
+
 // AskOss mirrors AskGemma's shape (same input/output signature) so callers
 // can pick one or the other based on which API route was hit.
 func AskOss(userMessage string) (string, error) {
 	ctx := context.Background()
 	log.Println("---------------------------------------------------STARTING OF AskOss----------------------------------------------------")
 
-	messages := []*OssMessage{
+	messages := []*typeOssMessage{
 		{
 			Role:    "system",
 			Content: OssSystemPrompt(),
@@ -120,7 +122,7 @@ func AskOss(userMessage string) (string, error) {
 		},
 	}
 
-	tools := []OssTool{ossWebSearchTool}
+	tools := []typeTool{ossWebSearchTool}
 
 	for turn := 0; turn < maxTurns; turn++ {
 
@@ -144,7 +146,7 @@ func AskOss(userMessage string) (string, error) {
 
 		for _, tc := range reply.ToolCalls {
 			if tc.Function.Name != "web_search" {
-				messages = append(messages, &OssMessage{
+				messages = append(messages, &typeOssMessage{
 					Role:    "tool",
 					Content: fmt.Sprintf("unknown tool %q requested", tc.Function.Name),
 				})
@@ -162,7 +164,7 @@ func AskOss(userMessage string) (string, error) {
 				result = fmt.Sprintf("Tool execution failed: %v", err)
 			}
 
-			messages = append(messages, &OssMessage{
+			messages = append(messages, &typeOssMessage{
 				Role:    "tool",
 				Content: result,
 			})
@@ -172,7 +174,7 @@ func AskOss(userMessage string) (string, error) {
 	return "", ErrOverLimitToolUsage
 }
 
-func callOllamaOss(ctx context.Context, iteration int, messages []*OssMessage, tools []OssTool) (*OssMessage, error) {
+func callOllamaOss(ctx context.Context, iteration int, messages []*typeOssMessage, tools []typeTool) (*typeOssMessage, error) {
 	log.Println("----------------------------------------------starting callOllamaOss execution----------------------------------------------")
 	log.Println("Iteration: ", iteration)
 

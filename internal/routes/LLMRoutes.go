@@ -8,7 +8,7 @@ import (
 )
 
 func RegisterGemmaRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/chatWithGemma", middleware.CheckJwtToken(httpcallers.CallMessageLLMClientSide()))
+	mux.HandleFunc("/ScleraChat", middleware.CheckJwtToken(httpcallers.CallMessageLLMClientSide()))
 	mux.HandleFunc("/gemmaProcessUserSentMessage", middleware.CheckJwtToken(httpcallers.CallMessageGemmaServerSide()))
 	mux.HandleFunc("/OSSProcessUserSentMessage", middleware.CheckJwtToken(httpcallers.CallMessageOSSServerSide()))
 
