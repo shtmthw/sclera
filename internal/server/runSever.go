@@ -10,6 +10,7 @@ import (
 	"github.com/resend/resend-go/v3"
 )
 
+// hello
 func newServer(mux http.Handler) *http.Server {
 
 	//takes the handler and assigns the server with it.
