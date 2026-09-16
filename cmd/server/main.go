@@ -22,7 +22,7 @@ func main() {
 	ctx := context.Background()
 
 	var redisClient = redis.NewClient(&redis.Options{
-		Addr: os.Getenv("REDIS_URL"),
+		Addr: os.Getenv("REDIS_ADDR"),
 	})
 
 	defer func() {
