@@ -12,6 +12,7 @@ import (
 	"github.com/resend/resend-go/v3"
 )
 
+// / random comments to push code to github
 func RegisterUserRoutes(mux *http.ServeMux, pool *pgxpool.Pool, redisClient *redis.Client, resendClient *resend.Client, trustedProxyNet *net.IPNet) {
 	mux.HandleFunc("/getUserData", middleware.CheckJwtToken(httpcallers.CallGetUser(pool), trustedProxyNet, redisClient, redisInternal.JWTTokenCost))
 	mux.HandleFunc("/deleteUserData", middleware.CheckJwtToken(httpcallers.CallDeleteUser(pool), trustedProxyNet, redisClient, redisInternal.JWTTokenCost))
