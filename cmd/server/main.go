@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -45,7 +46,12 @@ func main() {
 
 	defer pool.Close()
 
-	server.RunServer(pool, redisClient, resendClient)
+	_, trustedProxyNet, err := net.ParseCIDR("172.19.0.0/16")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	server.RunServer(pool, redisClient, resendClient, trustedProxyNet)
 
 	fmt.Println("Sclera server starting...")
 }

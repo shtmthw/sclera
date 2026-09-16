@@ -1,12 +1,14 @@
 services:
   server:
-    image: matthew552/sclera:latest 
-    ports:
-      - "8081:8080" 
+    image: matthew552/sclera:latest
     environment:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
+      REDIS_ADDR: http://redis:6379
+      SEARXNG_BASE_URL: http://searxng-core:8080
     depends_on:
+      redis:
+        condition: service_healthy
       database:
         condition: service_healthy
     networks:
@@ -27,7 +29,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-
+    ports:
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres-data:/var/lib/postgresql # postgres-data is a volume stored in my localmachine which takes the data out
                                                # of the dir /var/lib/postgresql/data in the containers file system, thus
@@ -35,9 +38,49 @@ services:
     networks:
       - sclera-network
 
+  redis:
+    container_name: ratelimit-redis
+    image: docker.io/redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    # No ports: published here either — only "app" needs to reach
+    # Redis, and it does so over testNet by service name ("redis").
+    networks:
+      - sclera-network
+
+  nginx:
+    container_name: ratelimit-nginx
+    image: docker.io/nginx:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:81:80"        # only nginx is exposed to the host, and only on loopback
+    networks:
+      - sclera-network
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+
+  searxng-core:
+    container_name: searxng-core
+    image: docker.io/searxng/searxng:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
+    networks:
+      - sclera-network
+    volumes:
+      - ./searxng/core-config/:/etc/searxng/
+      - core-data:/var/cache/searxng/
+
+
 networks: # lets you configure networks being used here
-  sclera-network: # both the server and container database uses this network
+  sclera-network:
+    external: true # uses pre-existing network
 
 volumes: # lets you configure volumes being used here
+  core-data:
   postgres-data: # the database cotainer uses this volume to track data
-

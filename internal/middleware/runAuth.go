@@ -3,12 +3,17 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mattthew/sclera/internal/authentication"
+	"github.com/mattthew/sclera/internal/redisInternal"
+	"github.com/redis/go-redis/v9" // official Redis client for Go
 )
 
 type contextKey string
@@ -19,64 +24,150 @@ const UserIDkey contextKey = "userID"
 
 //the key being assigned to that type so that future collision between keys stored into context doesnt occurr
 
-func CheckJwtToken(next http.HandlerFunc) http.HandlerFunc {
+func WriteJSONError(w http.ResponseWriter, status int, logMessage string, clientMessage string, logResponseError string) {
+	log.Println(logMessage)
+
+	w.WriteHeader(status)
+
+	jsonErr := json.NewEncoder(w).Encode(map[string]string{
+		"error": clientMessage,
+	})
+	if jsonErr != nil {
+		log.Println(logResponseError, jsonErr)
+	}
+}
+
+func clearAuthorizationCookie(w http.ResponseWriter) {
+	c := &http.Cookie{
+		Name:     "Authorization",
+		Value:    "",              // Clear the value
+		Path:     "/",             // Must match the original path
+		MaxAge:   -1,              // Signals immediate deletion
+		Expires:  time.Unix(0, 0), // Backward compatibility for older browsers
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   false,
+	}
+
+	http.SetCookie(w, c)
+}
+
+// rateLimitKey picks the Redis identity used for the Allow() bucket:
+//   - the caller's client IP when they are NOT authenticated (no
+//     Authorization cookie, a bad "Bearer " prefix, or an invalid/expired
+//     JWT) — pre-auth traffic is bucketed per-address;
+//   - the caller's verified userID once their JWT is legit, so the bucket
+//     follows the account instead of the network the user happens to be on.
+//
+// The token itself is only verified once here; CheckJwtToken relies on the
+// result (plus rateKey) instead of re-parsing it.
+func rateLimitKey(r *http.Request, trustedProxyNet *net.IPNet) (key string, userID int, tokenValid bool) {
+	clientIP := authentication.GetClientIP(r, trustedProxyNet)
+
+	cookie, err := r.Cookie("Authorization")
+	if err != nil {
+		return clientIP, 0, false
+	}
+
+	tokenString := cookie.Value
+
+	if !strings.HasPrefix(tokenString, "Bearer ") {
+		return clientIP, 0, false
+	}
+
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
+	userID, err = authentication.VerifyToken(tokenString)
+	if err != nil {
+		return clientIP, 0, false
+	}
+
+	return strconv.Itoa(userID), userID, true
+}
+
+func CheckJwtToken(next http.HandlerFunc, trustedProxyNet *net.IPNet, redisClient *redis.Client, cost float64) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		cookie, err := r.Cookie("Authorization")
+		ctx := r.Context()
+
+		//pick the rate limit identity: client IP while unauthenticated,
+		//verified userID once the JWT checks out.
+		rateKey, userID, tokenValid := rateLimitKey(r, trustedProxyNet)
+
+		//count the request against that identity's token bucket
+		allowed, remainingToken, err := redisInternal.Allow(ctx, redisClient, rateKey, cost)
+
 		if err != nil {
+			if errors.Is(err, redisInternal.ErrUnexpectedScriptError) {
 
-			w.WriteHeader(http.StatusUnauthorized)
-			jsonErr := json.NewEncoder(w).Encode(map[string]string{"error": "missing authorization token"})
-
-			//this is fucking ridicolous
-			if jsonErr != nil {
-				log.Println("error writing unauthorized response:", jsonErr)
+				log.Println(redisInternal.ErrUnexpectedScriptError)
+				WriteJSONError(
+					w,
+					http.StatusInternalServerError,
+					redisInternal.ErrUnexpectedScriptError.Error(),
+					"internal server error",
+					"error writing internal server error response:",
+				)
+				return
 			}
-
+			WriteJSONError(
+				w,
+				http.StatusInternalServerError,
+				"error allowing request: "+err.Error(),
+				"internal server error",
+				"error writing internal server error response:",
+			)
 			return
 		}
 
-		tokenString := cookie.Value
-
-		if !strings.HasPrefix(tokenString, "Bearer ") {
-			w.WriteHeader(http.StatusBadRequest)
-
-			prefixErr := json.NewEncoder(w).Encode(map[string]string{
-				"error": "invalid prefix",
-			})
-			log.Println("wrong prefix provided:", prefixErr)
+		if !allowed {
+			WriteJSONError(
+				w,
+				http.StatusTooManyRequests,
+				"too many requests",
+				"too many requests",
+				"error writing too many requests response:",
+			)
 			return
-
 		}
-		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
-		userID, err := authentication.VerifyToken(tokenString)
+		log.Println("remainingToken for rate key ", rateKey, ": ", remainingToken)
 
-		if err != nil {
-			c := &http.Cookie{
-				Name:     "Authorization",
-				Value:    "",              // Clear the value
-				Path:     "/",             // Must match the original path
-				MaxAge:   -1,              // Signals immediate deletion
-				Expires:  time.Unix(0, 0), // Backward compatibility for older browsers
-				HttpOnly: true,
-				SameSite: http.SameSiteLaxMode,
-				Secure:   false,
-			}
-			log.Println("error in jwt auth, err: ", err)
+		cookie, cookieErr := r.Cookie("Authorization")
 
-			http.SetCookie(w, c)
-			w.WriteHeader(http.StatusUnauthorized)
+		if cookieErr != nil {
+			WriteJSONError(
+				w,
+				http.StatusUnauthorized,
+				"missing authorization token",
+				"missing authorization token",
+				"error writing unauthorized response:",
+			)
+			return
+		}
 
-			writeErr := json.NewEncoder(w).Encode(map[string]string{
-				"error": "invalid token, please log/sign in again",
-			})
+		if !strings.HasPrefix(cookie.Value, "Bearer ") {
+			WriteJSONError(
+				w,
+				http.StatusBadRequest,
+				"invalid prefix",
+				"invalid prefix",
+				"error writing bad request response:",
+			)
+			return
+		}
 
-			//this is fucking ridicolous too..
-			if writeErr != nil {
-				log.Println("error writing unauthorized response:", writeErr)
-			}
+		if !tokenValid {
+			clearAuthorizationCookie(w)
+			log.Println("error in jwt auth, invalid or expired token")
 
+			WriteJSONError(
+				w,
+				http.StatusUnauthorized,
+				"invalid token, please log/sign in again",
+				"invalid token, please log/sign in again",
+				"error writing unauthorized response:",
+			)
 			return
 		}
 

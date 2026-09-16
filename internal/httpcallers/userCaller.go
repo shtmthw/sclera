@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/mattthew/sclera/internal/hashing"
 	"github.com/mattthew/sclera/internal/middleware"
 	"github.com/mattthew/sclera/internal/models"
+	"github.com/mattthew/sclera/internal/redisInternal"
 	"github.com/redis/go-redis/v9"
 	"github.com/resend/resend-go/v3"
 )
@@ -42,6 +44,36 @@ func VerifyHTTPMethod(w http.ResponseWriter, r *http.Request, allowedMethod stri
 		return false // Validation failed
 	}
 	return true // Validation passed
+}
+
+// WithIPRateLimit wraps a NON-middleware (pre-auth) handler so its requests
+// are bucketed against the caller's client IP via redisInternal.Allow().
+// Authenticated endpoints go through middleware.CheckJwtToken instead, which
+// buckets by verified userID. cost comes from the redisInternal token constants.
+func WithIPRateLimit(next http.HandlerFunc, redisClient *redis.Client, trustedProxyNet *net.IPNet, cost float64) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		clientIP := authentication.GetClientIP(r, trustedProxyNet)
+
+		allowed, remainingTokens, err := redisInternal.Allow(r.Context(), redisClient, clientIP, cost)
+
+		if err != nil {
+			if errors.Is(err, redisInternal.ErrUnexpectedScriptError) {
+				ThrowHTTPErrAndLog("rate limiter script error", redisInternal.ErrUnexpectedScriptError, "internal server error", w, http.StatusInternalServerError)
+				return
+			}
+			ThrowHTTPErrAndLog("error allowing request: ", err, "internal server error", w, http.StatusInternalServerError)
+			return
+		}
+
+		if !allowed {
+			ThrowHTTPErrAndLog("too many requests from this IP", nil, "too many requests", w, http.StatusTooManyRequests)
+			return
+		}
+
+		log.Println("remainingTokens for IP ", clientIP, ": ", remainingTokens)
+
+		next(w, r)
+	}
 }
 
 func CallGetUser(pool *pgxpool.Pool) http.HandlerFunc {
@@ -106,71 +138,61 @@ var parseUpdateAccountTemp = template.Must(template.ParseFiles("userHandling/upd
 var parseOTPverificationTemp = template.Must(template.ParseFiles("userHandling/OTPverification.html"))
 var parseUpdatePasswordTemp = template.Must(template.ParseFiles("userHandling/updatePassword.html"))
 
-func handleTokenEdgeCase(w http.ResponseWriter, r *http.Request) int {
+const (
+	invalidAuthorizationToken = 0
+	validAuthorizationToken   = 1
+	missingAuthorizationToken = 3
+)
+
+// validateAuthorizationToken handles the shared invalid-token cleanup and redirect.
+func validateAuthorizationToken(w http.ResponseWriter, r *http.Request) int {
 	cookie, err := r.Cookie("Authorization")
 
 	//edge case handling and token verification
-	if err == nil {
-		//if the token doesnt pass the verification, meaning user modified their token themseleves
-		//and a token provided by the server will 100% of the time include the "Bearer " infront of it
-
-		tokenString := strings.TrimPrefix(cookie.Value, "Bearer ")
-
-		_, err := authentication.VerifyToken(tokenString)
-		if err != nil {
-
-			// Write the Set-Cookie header to the response
-			// will not cause a superflous error as this is a declaration not a proccesion
-			instantCookieDeletion(w, "Authorization", "/")
-
-			// this is the close http contact or a preccesion call
-			http.Redirect(w, r, "/loginUser", http.StatusSeeOther)
-			return 0 // meaning invalid token
-		}
-
-		//if the token do pass the verification
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusForbidden)
-
-		_, writeErr := w.Write([]byte("You have arleady logged in."))
-
-		if writeErr != nil {
-			ThrowHTTPErrAndLog("error while trying to write response", writeErr, "An error occured while trying to write the response", w, http.StatusInternalServerError)
-			return 0 // internal error
-		}
-
-		return 1 // valid token
+	if err != nil {
+		return missingAuthorizationToken // token doesnt exist
 	}
 
-	return 3 // token doesnt exist
+	//if the token doesnt pass the verification, meaning user modified their token themseleves
+	//and a token provided by the server will 100% of the time include the "Bearer " infront of it
+	tokenString := strings.TrimPrefix(cookie.Value, "Bearer ")
+
+	_, err = authentication.VerifyToken(tokenString)
+	if err == nil {
+		return validAuthorizationToken // valid token
+	}
+
+	// Write the Set-Cookie header to the response
+	// will not cause a superflous error as this is a declaration not a proccesion
+	instantCookieDeletion(w, "Authorization", "/")
+
+	// this is the close http contact or a preccesion call
+	http.Redirect(w, r, "/loginUser", http.StatusSeeOther)
+	return invalidAuthorizationToken // meaning invalid token
+}
+
+func handleTokenEdgeCase(w http.ResponseWriter, r *http.Request) int {
+	stat := validateAuthorizationToken(w, r)
+	if stat != validAuthorizationToken {
+		return stat
+	}
+
+	//if the token do pass the verification
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusForbidden)
+
+	_, writeErr := w.Write([]byte("You have arleady logged in."))
+	if writeErr != nil {
+		ThrowHTTPErrAndLog("error while trying to write response", writeErr, "An error occured while trying to write the response", w, http.StatusInternalServerError)
+		return invalidAuthorizationToken // internal error
+	}
+
+	return validAuthorizationToken // valid token
 }
 
 // this is only used for /sendVerificationMail api
 func handleTokenEdgeCase2(w http.ResponseWriter, r *http.Request) int {
-	cookie, err := r.Cookie("Authorization")
-
-	//edge case handling and token verification
-	if err == nil {
-		//if the token doesnt pass the verification, meaning user modified their token themseleves
-		//and a token provided by the server will 100% of the time include the "Bearer " infront of it
-
-		tokenString := strings.TrimPrefix(cookie.Value, "Bearer ")
-
-		_, err := authentication.VerifyToken(tokenString)
-		if err != nil {
-
-			// Write the Set-Cookie header to the response
-			// will not cause a superflous error as this is a declaration not a proccesion
-			instantCookieDeletion(w, "Authorization", "/")
-
-			// this is the close http contact or a preccesion call
-			http.Redirect(w, r, "/loginUser", http.StatusSeeOther)
-			return 0 // meaning invalid token
-		}
-		return 1 // valid token
-	}
-
-	return 3 // token doesnt exist
+	return validateAuthorizationToken(w, r)
 }
 
 func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, template *template.Template) {
@@ -181,7 +203,7 @@ func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, 
 
 	stat := handleTokenEdgeCase(w, r)
 
-	if stat == 0 || stat == 1 {
+	if stat != missingAuthorizationToken {
 		return
 	}
 
@@ -387,18 +409,7 @@ func CallLogoutUser() http.HandlerFunc {
 			//ans: return statements are preciesly there to prematurely end a function
 		}
 
-		instantCookieDeletion := &http.Cookie{
-			Name:     "Authorization",
-			Value:    "",              // Clear the value
-			Path:     "/",             // Must match the original path
-			MaxAge:   -1,              // Signals immediate deletion
-			Expires:  time.Unix(0, 0), // Backward compatibility for older browsers
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			Secure:   false,
-		}
-
-		http.SetCookie(w, instantCookieDeletion)
+		instantCookieDeletion(w, "Authorization", "/")
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		//why do i not need a return here
 		//ans: because this is the natural end of this function
@@ -437,18 +448,7 @@ func CallDeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
 			ThrowHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", err, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
 			return
 		}
-		instantCookieDeletion := &http.Cookie{
-			Name:     "Authorization",
-			Value:    "",              // Clear the value
-			Path:     "/",             // Must match the original path
-			MaxAge:   -1,              // Signals immediate deletion
-			Expires:  time.Unix(0, 0), // Backward compatibility for older browsers
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			Secure:   false,
-		}
-
-		http.SetCookie(w, instantCookieDeletion)
+		instantCookieDeletion(w, "Authorization", "/")
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
 }
@@ -593,7 +593,7 @@ func CallUpdateUserServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 func buildOTPEmailHTML(otp string) string {
 	return fmt.Sprintf(`
 <div style="font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px 24px; background-color: #ffffff;">
-    
+
     <!-- Header -->
     <h2 style="color: #1a1a1a; font-size: 20px; margin-bottom: 8px;">Verify your account</h2>
     <p style="color: #555555; font-size: 14px; line-height: 1.5; margin-bottom: 24px;">
@@ -656,7 +656,7 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 
 		tStat := handleTokenEdgeCase2(w, r)
 
-		if tStat == 0 {
+		if tStat == invalidAuthorizationToken {
 			return
 		}
 
