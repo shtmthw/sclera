@@ -4,7 +4,7 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL}
       JWT_SECRET: ${JWT_SECRET}
-      REDIS_ADDR: http://redis:6379
+      REDIS_ADDR: redis:6379
       SEARXNG_BASE_URL: http://searxng-core:8080
     depends_on:
       redis:
