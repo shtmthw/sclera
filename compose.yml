@@ -76,7 +76,7 @@ services:
       - ./searXNG/searxng/core-config/:/etc/searxng/
       - core-data:/var/cache/searxng/
 
-#daafsfsaf
+#random cmnt to git commit
 networks: # lets you configure networks being used here
   sclera-network:
     external: true # uses pre-existing network
