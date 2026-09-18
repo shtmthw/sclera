@@ -70,19 +70,17 @@ func rateLimitKey(r *http.Request, trustedProxyNet *net.IPNet) (key string, user
 	}
 
 	tokenString := cookie.Value
-
 	if !strings.HasPrefix(tokenString, "Bearer ") {
 		return clientIP, 0, false
 	}
-
 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
-	userID, err = authentication.VerifyToken(tokenString)
+	uid, err := authentication.VerifyToken(tokenString)
 	if err != nil {
 		return clientIP, 0, false
 	}
 
-	return strconv.Itoa(userID), userID, true
+	return strconv.Itoa(uid), uid, true
 }
 
 func CheckJwtToken(next http.HandlerFunc, trustedProxyNet *net.IPNet, redisClient *redis.Client, cost float64) http.HandlerFunc {
@@ -131,31 +129,7 @@ func CheckJwtToken(next http.HandlerFunc, trustedProxyNet *net.IPNet, redisClien
 			return
 		}
 
-		log.Println("remainingToken for rate key ", rateKey, ": ", remainingToken)
-
-		cookie, cookieErr := r.Cookie("Authorization")
-
-		if cookieErr != nil {
-			WriteJSONError(
-				w,
-				http.StatusUnauthorized,
-				"missing authorization token",
-				"missing authorization token",
-				"error writing unauthorized response:",
-			)
-			return
-		}
-
-		if !strings.HasPrefix(cookie.Value, "Bearer ") {
-			WriteJSONError(
-				w,
-				http.StatusBadRequest,
-				"invalid prefix",
-				"invalid prefix",
-				"error writing bad request response:",
-			)
-			return
-		}
+		log.Println("remainingTokens for userID: ", rateKey, ": ", remainingToken)
 
 		if !tokenValid {
 			clearAuthorizationCookie(w)

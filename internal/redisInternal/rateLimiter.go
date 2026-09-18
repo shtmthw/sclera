@@ -127,8 +127,8 @@ func Allow(ctx context.Context, redisClient *redis.Client, key string, cost floa
 	// easily scan/inspect/flush just rate-limit keys later.
 	fullKey := fmt.Sprintf("ratelimit:user:%s", key)
 
-	var refillRate float32 = 0.01667
-	capacity := 100
+	var refillRate float32 = 0.50
+	capacity := 225
 	// now is computed in Go and passed in as an argument (see ARGV[3]
 	// above) rather than letting the Lua script call a Redis time
 	// function, so the whole system agrees on one clock source.
