@@ -1,7 +1,6 @@
 package server
 
 import (
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -33,18 +32,6 @@ func RunServer(pool *pgxpool.Pool, redisClient *redis.Client, resendClient *rese
 	//assigns the mux router/ServeMux ( has .HandleFunc within it ) to connect the endpoints to the handlerfuncs
 	routes.RegisterUserRoutes(mux, pool, redisClient, resendClient, trustedProxyNet)
 	routes.RegisterGemmaRoutes(mux, redisClient, trustedProxyNet)
-
-	mux.HandleFunc("/debug-headers", func(w http.ResponseWriter, r *http.Request) {
-		for k, v := range r.Header {
-			if _, err := fmt.Fprintf(w, "%s: %v\n", k, v); err != nil {
-				log.Println("debug-headers write error:", err)
-			}
-		}
-		if _, err := fmt.Fprintf(w, "RemoteAddr: %s\n", r.RemoteAddr); err != nil {
-			log.Println("debug-headers write error:", err)
-		}
-	})
-
 	//creates the server and hosts the mux handler to the provided port.
 	server := newServer(mux)
 

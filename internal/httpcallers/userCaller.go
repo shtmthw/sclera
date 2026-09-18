@@ -53,6 +53,15 @@ func VerifyHTTPMethod(w http.ResponseWriter, r *http.Request, allowedMethod stri
 // buckets by verified userID. cost comes from the redisInternal token constants.
 func WithIPRateLimit(next http.HandlerFunc, redisClient *redis.Client, trustedProxyNet *net.IPNet, cost float64) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Pre-auth traffic is always IP-bucketed, so require the verified
+		// nginx proxy (or loopback for local `air` dev). Block before
+		// touching Redis so rogue direct hits never burn buckets.
+		if !authentication.IsTrustedProxy(r, trustedProxyNet) {
+			log.Println("blocked direct/untrusted-proxy request from ", r.RemoteAddr)
+			authentication.WriteProxyBlockHTML(w, r)
+			return
+		}
+
 		clientIP := authentication.GetClientIP(r, trustedProxyNet)
 
 		allowed, remainingTokens, err := redisInternal.Allow(r.Context(), redisClient, clientIP, cost)

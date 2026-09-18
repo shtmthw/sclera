@@ -92,6 +92,23 @@ func CheckJwtToken(next http.HandlerFunc, trustedProxyNet *net.IPNet, redisClien
 		//verified userID once the JWT checks out.
 		rateKey, userID, tokenValid := rateLimitKey(r, trustedProxyNet)
 
+		// Proxy gate applies only when the bucket key is the IP (no valid
+		// JWT). A verified logged-in user buckets by userID and skips this
+		// gate: stolen-token + direct-access bypass is accepted by design
+		// because a verified account is far less likely to probe this way.
+		// Invalid/missing-token traffic must still come via nginx/loopback.
+		if !tokenValid && !authentication.IsTrustedProxy(r, trustedProxyNet) {
+			log.Println("blocked direct/untrusted-proxy request from ", r.RemoteAddr)
+			WriteJSONError(
+				w,
+				http.StatusForbidden,
+				"blocked direct/untrusted-proxy request",
+				"NICE TRY SON",
+				"error writing proxy block response:",
+			)
+			return
+		}
+
 		//count the request against that identity's token bucket
 		allowed, remainingToken, err := redisInternal.Allow(ctx, redisClient, rateKey, cost)
 

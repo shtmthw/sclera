@@ -46,7 +46,10 @@ func main() {
 
 	defer pool.Close()
 
-	_, trustedProxyNet, err := net.ParseCIDR("172.19.0.0/16")
+	// Trust proxy addresses belonging to our Docker network.
+	// 172.19.0.0/16 is an RFC1918 private IPv4 subnet that we explicitly assigned to the Docker network
+
+	_, trustedProxyNet, err := net.ParseCIDR("172.19.0.0/16") // the internal local network ip range of the docker network, same as an private ip.
 	if err != nil {
 		log.Fatal(err)
 	}
