@@ -19,6 +19,7 @@ func Dispatch(ctx context.Context, call *AIResponse) (string, error) {
 	}
 }
 
+// fun fact: I still love her, and all this is me trying to cope.
 func dispatchWebSearch(ctx context.Context, call *AIResponse) (string, error) {
 	rawQuery, ok := call.Arguments["query"]
 
