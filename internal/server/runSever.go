@@ -36,9 +36,13 @@ func RunServer(pool *pgxpool.Pool, redisClient *redis.Client, resendClient *rese
 
 	mux.HandleFunc("/debug-headers", func(w http.ResponseWriter, r *http.Request) {
 		for k, v := range r.Header {
-			fmt.Fprintf(w, "%s: %v\n", k, v)
+			if _, err := fmt.Fprintf(w, "%s: %v\n", k, v); err != nil {
+				log.Println("debug-headers write error:", err)
+			}
 		}
-		fmt.Fprintf(w, "RemoteAddr: %s\n", r.RemoteAddr)
+		if _, err := fmt.Fprintf(w, "RemoteAddr: %s\n", r.RemoteAddr); err != nil {
+			log.Println("debug-headers write error:", err)
+		}
 	})
 
 	//creates the server and hosts the mux handler to the provided port.
