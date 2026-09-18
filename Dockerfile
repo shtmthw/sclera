@@ -39,10 +39,11 @@ WORKDIR /Sclera
 #makes the Sclera folder within it
 
 COPY --from=builder /Sclera/main .
-COPY --from=builder /Sclera/tempFrontend .
 
 #this takes the /Sclera/main . (all) from the build stage named builder (who knew...) and pastes into the /Sclera, so the current builder has
 # /Sclera/main
+# NOTE: tempFrontend is no longer copied into the image — the frontend is
+# compiled into the binary as templ components, so nothing is needed at runtime.
 
 CMD ["./main"]
 #runs the /Sclera/main binary file and starts the server

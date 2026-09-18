@@ -3,18 +3,16 @@ package httpcallers
 import (
 	"encoding/json"
 	"errors"
-	"html/template"
 	"net/http"
 	"strings"
 
 	llm "github.com/mattthew/sclera/internal/LLM"
+	"github.com/mattthew/sclera/tempFrontend/LLMHandling"
 )
 
 type ChatResponse struct {
 	Reply string `json:"reply"`
 }
-
-var parseGemmaChatWindowTemp = template.Must(template.ParseFiles("LLMHandling/LLMChatWindow.html"))
 
 func serverSideLLMboilerPlate(w http.ResponseWriter, r *http.Request, LLMcall func(string) (string, error)) {
 	stat := VerifyHTTPMethod(w, r, http.MethodPost)
@@ -68,15 +66,8 @@ func CallMessageLLMClientSide() http.HandlerFunc {
 		if !stat {
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-		tempParseErrr := parseGemmaChatWindowTemp.Execute(w, nil)
-
-		if tempParseErrr != nil {
-			ThrowHTTPErrAndLog("failed to render template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
-			return
-		}
-
+		renderComponent(w, r, llmhandling.ChatWindow())
 	}
 }
 

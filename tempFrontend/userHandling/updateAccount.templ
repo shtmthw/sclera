@@ -1,0 +1,208 @@
+package userhandling
+
+import (
+	"github.com/mattthew/sclera/tempFrontend/shared"
+)
+
+templ UpdateAccount(data UpdateAccountData) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8">
+			<meta name="viewport" content="width=device-width, initial-scale=1.0">
+			<title>Update your account</title>
+			@shared.BaseStyles()
+			<style>
+				.auth-card { max-width: 520px; }
+
+				#changePasswordForm {
+					display: none;
+					margin-top: 16px;
+					padding-top: 16px;
+					border-top: 1px solid var(--border);
+				}
+
+				.forgot-wrap { text-align: center; }
+
+				button:focus-visible,
+				input:focus-visible {
+					outline: 2px solid var(--accent);
+					outline-offset: 2px;
+				}
+			</style>
+		</head>
+		<body>
+			<div class="auth-shell">
+				<main class="auth-card">
+					<div class="brand-mark">
+						<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+							<circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.6"/>
+							<path d="M5 19c1.2-3.2 4-5 7-5s5.8 1.8 7 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+						</svg>
+					</div>
+
+					<h1 class="auth-title">Update your account</h1>
+					<p class="auth-sub">Edit your name and pick up to 5 topics you are interested in.</p>
+
+					<form action="/updateUserAccount" method="POST" novalidate>
+						<div class="field">
+							<label class="field-label" for="name">Name</label>
+							<input class="input" type="text" id="name" name="name" placeholder="Your name" autocomplete="name" value={ data.Name } required>
+						</div>
+
+						<fieldset style="border: none; padding: 0; margin: 0 0 20px;">
+							<legend class="field-label">Select up to 5 topics <span style="font-weight: 400;" id="topicCount"></span></legend>
+							<div class="chip-grid">
+								<label class="chip">
+									<input type="checkbox" name="items" value="fish"
+										if data.FavouriteTopics["fish"] {
+											checked
+										}
+									>
+									<span>Fish</span>
+								</label>
+								<label class="chip">
+									<input type="checkbox" name="items" value="chicken"
+										if data.FavouriteTopics["chicken"] {
+											checked
+										}
+									>
+									<span>Chicken</span>
+								</label>
+								<label class="chip">
+									<input type="checkbox" name="items" value="pig"
+										if data.FavouriteTopics["pig"] {
+											checked
+										}
+									>
+									<span>Pig</span>
+								</label>
+								<label class="chip">
+									<input type="checkbox" name="items" value="beef"
+										if data.FavouriteTopics["beef"] {
+											checked
+										}
+									>
+									<span>Beef</span>
+								</label>
+								<label class="chip">
+									<input type="checkbox" name="items" value="eggs"
+										if data.FavouriteTopics["eggs"] {
+											checked
+										}
+									>
+									<span>Eggs</span>
+								</label>
+								<label class="chip">
+									<input type="checkbox" name="items" value="lettuce"
+										if data.FavouriteTopics["lettuce"] {
+											checked
+										}
+									>
+									<span>Lettuce</span>
+								</label>
+								<label class="chip">
+									<input type="checkbox" name="items" value="apple"
+										if data.FavouriteTopics["apple"] {
+											checked
+										}
+									>
+									<span>Apple</span>
+								</label>
+								<label class="chip">
+									<input type="checkbox" name="items" value="banana"
+										if data.FavouriteTopics["banana"] {
+											checked
+										}
+									>
+									<span>Banana</span>
+								</label>
+								<label class="chip">
+									<input type="checkbox" name="items" value="cherry"
+										if data.FavouriteTopics["cherry"] {
+											checked
+										}
+									>
+									<span>Cherry</span>
+								</label>
+								<label class="chip">
+									<input type="checkbox" name="items" value="date"
+										if data.FavouriteTopics["date"] {
+											checked
+										}
+									>
+									<span>Date</span>
+								</label>
+								<label class="chip">
+									<input type="checkbox" name="items" value="egg"
+										if data.FavouriteTopics["egg"] {
+											checked
+										}
+									>
+									<span>Egg</span>
+								</label>
+								<label class="chip">
+									<input type="checkbox" name="items" value="fig"
+										if data.FavouriteTopics["fig"] {
+											checked
+										}
+									>
+									<span>Fig</span>
+								</label>
+							</div>
+						</fieldset>
+
+						<div class="field">
+							<label class="field-label" for="password">Confirm with your password</label>
+							<input class="input" type="password" id="password" name="password" placeholder="Your password" autocomplete="current-password" required>
+						</div>
+
+						<button type="submit" class="btn">Save changes</button>
+					</form>
+
+					<div class="hr"></div>
+
+					<div class="forgot-wrap">
+						<button type="button" class="link-btn" id="forgotBtn">Forgot your password?</button>
+					</div>
+
+					<form id="changePasswordForm" action="/sendVerificationMail" method="POST">
+						<div class="field">
+							<label class="field-label" for="resetEmail">Email</label>
+							<input class="input" type="email" id="resetEmail" name="email" placeholder="Your account email" required>
+						</div>
+						<button type="submit" class="btn invert">Send OTP to my email</button>
+					</form>
+
+				</main>
+			</div>
+
+			<script>
+				const checkboxes = document.querySelectorAll('input[name="items"]');
+				const topicCountEl = document.getElementById('topicCount');
+
+				function updateCheckboxLimit() {
+					const checkedCount = document.querySelectorAll('input[name="items"]:checked').length;
+					checkboxes.forEach(box => {
+						box.disabled = checkedCount >= 5 && !box.checked;
+					});
+					topicCountEl.textContent = `(${checkedCount}/5)`;
+				}
+
+				checkboxes.forEach(cb => {
+					cb.addEventListener('change', updateCheckboxLimit);
+				});
+
+				updateCheckboxLimit();
+
+				const forgotBtn = document.getElementById('forgotBtn');
+				const changePasswordForm = document.getElementById('changePasswordForm');
+
+				forgotBtn.addEventListener('click', () => {
+					const isHidden = changePasswordForm.style.display === 'none' || changePasswordForm.style.display === '';
+					changePasswordForm.style.display = isHidden ? 'block' : 'none';
+				});
+			</script>
+		</body>
+	</html>
+}

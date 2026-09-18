@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"html/template"
 	"log"
 	"net"
 	"net/http"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/mattthew/sclera/internal/authentication"
 	"github.com/mattthew/sclera/internal/handlers"
@@ -20,6 +20,7 @@ import (
 	"github.com/mattthew/sclera/internal/middleware"
 	"github.com/mattthew/sclera/internal/models"
 	"github.com/mattthew/sclera/internal/redisInternal"
+	userhandling "github.com/mattthew/sclera/tempFrontend/userHandling"
 	"github.com/redis/go-redis/v9"
 	"github.com/resend/resend-go/v3"
 )
@@ -131,12 +132,11 @@ func CallGetUser(pool *pgxpool.Pool) http.HandlerFunc {
 // must make sure the form is provided with proper info or no
 // the form info then gets written to the users request body then passed onto /createUser
 
-// make sure to preload this SOMEHOW, but this is NOT GOOD FOR OPTIMIZATION
-var parseNewAccountTemp = template.Must(template.ParseFiles("userHandling/newAccount.html"))
-var parseLoginAccountTemp = template.Must(template.ParseFiles("userHandling/loginAccount.html"))
-var parseUpdateAccountTemp = template.Must(template.ParseFiles("userHandling/updateAccount.html"))
-var parseOTPverificationTemp = template.Must(template.ParseFiles("userHandling/OTPverification.html"))
-var parseUpdatePasswordTemp = template.Must(template.ParseFiles("userHandling/updatePassword.html"))
+// NOTE: the pages no longer need to be loaded from disk at boot — they are
+// now templ components compiled straight into the binary (see tempFrontend/).
+// With templ the templates are type-safe Go code, so there is no runtime
+// file parsing, no template.Must, and no risk of a missing .html file
+// crashing the server at startup.
 
 const (
 	invalidAuthorizationToken = 0
@@ -195,7 +195,20 @@ func handleTokenEdgeCase2(w http.ResponseWriter, r *http.Request) int {
 	return validateAuthorizationToken(w, r)
 }
 
-func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, template *template.Template) {
+// renderComponent writes a templ component to the response with the correct
+// Content-Type, replacing the old template.Execute calls.
+func renderComponent(w http.ResponseWriter, r *http.Request, component templ.Component) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	renderErr := component.Render(r.Context(), w)
+
+	if renderErr != nil {
+		ThrowHTTPErrAndLog("failed to render template", renderErr, "Internal server error", w, http.StatusInternalServerError)
+		return
+	}
+}
+
+func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, component templ.Component) {
 
 	//check if user has already made an account and if he did show a diff html result
 	//make use one html file is used an dynamically set
@@ -207,18 +220,13 @@ func loadTemplateAndHandleTokenEdgeCase(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	tempParseErrr := template.Execute(w, nil)
-
-	if tempParseErrr != nil {
-		ThrowHTTPErrAndLog("failed to render signup template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
-		return
-	}
+	renderComponent(w, r, component)
 
 }
 
 func CallNewUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		loadTemplateAndHandleTokenEdgeCase(w, r, parseNewAccountTemp)
+		loadTemplateAndHandleTokenEdgeCase(w, r, userhandling.NewAccount())
 	}
 
 }
@@ -324,7 +332,7 @@ func CallLoginUser() http.HandlerFunc {
 		if !stat {
 			return
 		}
-		loadTemplateAndHandleTokenEdgeCase(w, r, parseLoginAccountTemp)
+		loadTemplateAndHandleTokenEdgeCase(w, r, userhandling.LoginAccount())
 
 	}
 }
@@ -454,12 +462,7 @@ func CallDeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
 }
 
 // goes thru to middleware to make sure user is authenticated
-// loads the http template to the user
-type updateAccountPageData struct {
-	Name            string
-	FavouriteTopics map[string]bool
-}
-
+// loads the templ page to the user
 func CallUpdateUserClientSide(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		stat := VerifyHTTPMethod(w, r, http.MethodGet)
@@ -488,20 +491,13 @@ func CallUpdateUserClientSide(pool *pgxpool.Pool) http.HandlerFunc {
 			topicsMap[t] = true
 		}
 
-		data := updateAccountPageData{
+		data := userhandling.UpdateAccountData{
 
 			Name:            user.Name,
 			FavouriteTopics: topicsMap,
 		}
 
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-		tempParseErrr := parseUpdateAccountTemp.Execute(w, data)
-
-		if tempParseErrr != nil {
-			ThrowHTTPErrAndLog("failed to render template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
-			return
-		}
+		renderComponent(w, r, userhandling.UpdateAccount(data))
 	}
 }
 
@@ -746,15 +742,8 @@ func CallVerifyOTPclientSide() http.HandlerFunc {
 		if !stat {
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-		tempParseErrr := parseOTPverificationTemp.Execute(w, nil)
-
-		if tempParseErrr != nil {
-			ThrowHTTPErrAndLog("failed to render template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
-			return
-		}
-
+		renderComponent(w, r, userhandling.OTPVerification())
 	}
 }
 
@@ -918,13 +907,7 @@ func CallUpdateUserPasswordClientSide() http.HandlerFunc {
 		if !stat {
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-		tempParseErrr := parseUpdatePasswordTemp.Execute(w, nil)
-
-		if tempParseErrr != nil {
-			ThrowHTTPErrAndLog("failed to render template", tempParseErrr, "Internal server error", w, http.StatusInternalServerError)
-			return
-		}
+		renderComponent(w, r, userhandling.UpdatePassword())
 	}
 }

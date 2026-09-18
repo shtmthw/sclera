@@ -1,0 +1,238 @@
+package shared
+
+// BaseStyles emits the shared design system used by every Sclera page.
+// White background, near-black text, one teal accent, clean hairlines.
+templ BaseStyles() {
+	<style>
+		:root {
+			--bg: #ffffff;
+			--surface: #fafafa;
+			--surface-2: #f4f4f5;
+			--border: #e4e4e7;
+			--border-strong: #d4d4d8;
+			--text: #18181b;
+			--text-muted: #71717a;
+			--text-faint: #a1a1aa;
+			--accent: #0f766e;
+			--accent-strong: #115e59;
+			--accent-soft: #f0fdfa;
+			--error: #dc2626;
+			--error-soft: #fef2f2;
+			--radius-sm: 8px;
+			--radius: 12px;
+			--radius-lg: 16px;
+			--shadow-sm: 0 1px 2px rgba(24, 24, 27, 0.05);
+			--shadow-lg: 0 16px 40px rgba(24, 24, 27, 0.1);
+			--font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+			--font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+		}
+
+		*, *::before, *::after { box-sizing: border-box; }
+
+		html, body { margin: 0; padding: 0; }
+
+		body {
+			background: var(--bg);
+			color: var(--text);
+			font-family: var(--font);
+			line-height: 1.5;
+			-webkit-font-smoothing: antialiased;
+			text-rendering: optimizeLegibility;
+		}
+
+		h1, h2, h3, p { margin: 0; }
+		button { font-family: inherit; }
+		a { color: var(--accent); }
+
+		::selection { background: var(--accent-soft); }
+
+		/* ---------- Auth page shell (login / signup / otp / password) ---------- */
+		.auth-shell {
+			min-height: 100vh;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: 24px;
+		}
+
+		.auth-card {
+			width: 100%;
+			max-width: 440px;
+			background: var(--bg);
+			border: 1px solid var(--border);
+			border-radius: var(--radius-lg);
+			box-shadow: var(--shadow-lg);
+			padding: 36px;
+		}
+
+		.brand-mark {
+			width: 42px;
+			height: 42px;
+			border-radius: 11px;
+			background: var(--text);
+			color: #ffffff;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			margin-bottom: 24px;
+		}
+
+		.brand-mark svg { width: 20px; height: 20px; }
+
+		.auth-title {
+			font-size: 22px;
+			font-weight: 700;
+			letter-spacing: -0.01em;
+			margin-bottom: 8px;
+		}
+
+		.auth-sub {
+			color: var(--text-muted);
+			font-size: 14px;
+			margin-bottom: 28px;
+		}
+
+		.field { margin-bottom: 18px; }
+
+		.field-label {
+			display: block;
+			font-size: 13px;
+			font-weight: 600;
+			color: var(--text);
+			margin-bottom: 6px;
+		}
+
+		.input {
+			width: 100%;
+			padding: 11px 14px;
+			font-size: 15px;
+			color: var(--text);
+			background: var(--bg);
+			border: 1px solid var(--border-strong);
+			border-radius: var(--radius-sm);
+			outline: none;
+			font-family: inherit;
+			transition: border-color 140ms ease, box-shadow 140ms ease;
+		}
+
+		.input:focus {
+			border-color: var(--accent);
+			box-shadow: 0 0 0 3px var(--accent-soft);
+		}
+
+		.input::placeholder { color: var(--text-faint); }
+		.input.error { border-color: var(--error); }
+
+		.btn {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 100%;
+			padding: 12px 16px;
+			font-size: 14px;
+			font-weight: 600;
+			font-family: inherit;
+			color: #ffffff;
+			background: var(--text);
+			border: 1px solid var(--text);
+			border-radius: var(--radius-sm);
+			cursor: pointer;
+			transition: background 140ms ease, opacity 140ms ease, transform 80ms ease;
+		}
+
+		.btn:not(:disabled):hover { background: #27272a; }
+		.btn:not(:disabled):active { transform: scale(0.99); }
+		.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+		.btn.invert {
+			background: var(--accent);
+			border-color: var(--accent);
+		}
+		.btn.invert:not(:disabled):hover { background: var(--accent-strong); }
+
+		.link-btn {
+			background: none;
+			border: none;
+			padding: 0;
+			color: var(--accent);
+			font: inherit;
+			font-size: 13px;
+			font-weight: 600;
+			cursor: pointer;
+		}
+
+		.link-btn:hover { text-decoration: underline; }
+
+		.status {
+			min-height: 20px;
+			font-size: 13px;
+			margin: 4px 0 18px;
+		}
+
+		.status .error-text {
+			color: var(--error);
+			display: none;
+		}
+
+		.status.is-error .error-text { display: inline; }
+
+		/* ---------- Topic chips (signup + update account) ---------- */
+		.chip-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+			gap: 8px;
+		}
+
+		.chip { position: relative; }
+
+		.chip input {
+			position: absolute;
+			opacity: 0;
+			width: 0;
+			height: 0;
+		}
+
+		.chip span {
+			display: block;
+			text-align: center;
+			padding: 10px 8px;
+			font-size: 13px;
+			font-weight: 500;
+			color: var(--text-muted);
+			background: var(--surface);
+			border: 1px solid var(--border);
+			border-radius: var(--radius-sm);
+			cursor: pointer;
+			transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+			user-select: none;
+		}
+
+		.chip input:checked + span {
+			background: var(--text);
+			border-color: var(--text);
+			color: #ffffff;
+		}
+
+		.chip input:disabled:not(:checked) + span {
+			opacity: 0.4;
+			cursor: not-allowed;
+		}
+
+		.chip input:focus-visible + span {
+			outline: 2px solid var(--accent);
+			outline-offset: 2px;
+		}
+
+		.hr {
+			border: none;
+			border-top: 1px solid var(--border);
+			margin: 28px 0 20px;
+		}
+
+		.center { text-align: center; }
+
+		@media (prefers-reduced-motion: reduce) {
+			* { animation: none !important; transition: none !important; }
+		}
+	</style>
+}
