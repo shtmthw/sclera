@@ -18,7 +18,7 @@ services:
       - sclera-network
 
   database:
-  # does not need to be portmapped as this has no need to talk to hosts localhost, and assinging a containter
+  # does not  need to be portmapped as this has no need to talk to hosts localhost, and assinging a containter
   # to a network automatically creates a bridge between the container of that network allowing the containers to comm
   # database;5432 being hosted thru bridge (the network itself) of this image here,gs
     image: postgres:latest
@@ -72,7 +72,7 @@ services:
     image: docker.io/searxng/searxng:latest
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8081:8080"
+      - "127.0.0.1:3000:3000"
     networks:
       - sclera-network
     volumes:
