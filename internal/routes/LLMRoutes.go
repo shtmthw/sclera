@@ -10,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// gdgdsgd
 func RegisterGemmaRoutes(mux *http.ServeMux, redisClient *redis.Client, trustedProxyNet *net.IPNet) {
 	mux.HandleFunc("/ScleraChat", middleware.CheckJwtToken(httpcallers.CallMessageLLMClientSide(), trustedProxyNet, redisClient, redisInternal.JWTTokenCost))
 	mux.HandleFunc("/gemmaProcessUserSentMessage", middleware.CheckJwtToken(httpcallers.CallMessageGemmaServerSide(), trustedProxyNet, redisClient, redisInternal.LLMTokenCost))
