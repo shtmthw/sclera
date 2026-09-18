@@ -59,7 +59,7 @@ func serverSideLLMboilerPlate(w http.ResponseWriter, r *http.Request, LLMcall fu
 
 }
 
-// this is /chatWithGemma
+// this is /ScleraChat
 func CallMessageLLMClientSide() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		stat := VerifyHTTPMethod(w, r, http.MethodGet)

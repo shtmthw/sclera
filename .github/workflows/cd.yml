@@ -61,5 +61,6 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         run: docker compose up -d
  

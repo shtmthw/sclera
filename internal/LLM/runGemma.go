@@ -303,5 +303,3 @@ Rules:
 8. When you have enough information, return final_answer.
 `
 }
-
-// Optional helper if you want the model name configurable through env.

@@ -1,7 +1,5 @@
 package authentication
 
-// mock code
-
 import (
 	"context"
 	"crypto/rand"

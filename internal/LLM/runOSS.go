@@ -103,8 +103,6 @@ var ossWebSearchTool = typeTool{
 	},
 }
 
-// ---- ONLY TO SHAPE WHAT TOOL THE AI KNOWS ABOUT AND WHAT ARGUMENTS IT MUST SEND TO CALL IT ----
-
 // AskOss mirrors AskGemma's shape (same input/output signature) so callers
 // can pick one or the other based on which API route was hit.
 func AskOss(userMessage string) (string, error) {

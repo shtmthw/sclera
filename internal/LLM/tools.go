@@ -2,7 +2,6 @@ package llm
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -52,14 +51,4 @@ func dispatchWebSearch(ctx context.Context, call *AIResponse) (string, error) {
 	}
 
 	return SearchWeb(ctx, query)
-}
-
-// Optional helper for logging/debugging tool requests.
-func ToolCallJSON(call *AIResponse) string {
-	data, err := json.Marshal(call)
-	if err != nil {
-		return ""
-	}
-
-	return string(data)
 }

@@ -125,13 +125,6 @@ func CallGetUser(pool *pgxpool.Pool) http.HandlerFunc {
 	}
 }
 
-//this displays the html file to user when he enters /newUser and fills up the form then onclick sends the get request to /createUser happens
-
-// features
-// must check if user is logged in or no
-// must make sure the form is provided with proper info or no
-// the form info then gets written to the users request body then passed onto /createUser
-
 // NOTE: the pages no longer need to be loaded from disk at boot — they are
 // now templ components compiled straight into the binary (see tempFrontend/).
 // With templ the templates are type-safe Go code, so there is no runtime
@@ -232,7 +225,6 @@ func CallNewUser() http.HandlerFunc {
 }
 
 // this is the func that gets attached to the /createUser api endpoint
-// get handler for /newUser
 func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {

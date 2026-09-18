@@ -2,3 +2,4 @@
 /server
 tmp/
 *.exe
+.opencode/cache/

@@ -21,7 +21,7 @@ const (
 	PageTokenCost = 5
 	FormTokenCost = 10
 	JWTTokenCost  = 20
-	LLMTokenCost  = 25
+	LLMTokenCost  = 30
 )
 
 // Limiter wraps a Redis client and holds the default bucket config.
