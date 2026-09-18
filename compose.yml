@@ -18,7 +18,7 @@ services:
   database:
   # does not need to be portmapped as this has no need to talk to hosts localhost, and assinging a containter
   # to a network automatically creates a bridge between the container of that network allowing the containers to comm
-  # database;5432 being hosted thru bridge (the network itself) of this image here,
+  # database;5432 being hosted thru bridge (the network itself) of this image here,gs
     image: postgres:latest
     environment:
       POSTGRES_USER: matthew
