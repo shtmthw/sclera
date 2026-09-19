@@ -34,9 +34,9 @@ func GetClientIP(r *http.Request, trustedProxyNet *net.IPNet) (string, error) {
 	// process the actual user ip
 	xrip := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-IP")))
 	if xrip == nil {
-		log.Printf("XRIP is nil, xrip: ", xrip)
+		log.Printf("XRIP is nil")
 		return "", ErrInvalidIP
 	}
 
-	return xrip.String(), true, nil
+	return xrip.String(), nil
 }
