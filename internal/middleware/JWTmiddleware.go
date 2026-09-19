@@ -61,9 +61,7 @@ func clearAuthorizationCookie(w http.ResponseWriter) {
 //
 // The token itself is only verified once here; CheckJwtToken relies on the
 // result (plus rateKey) instead of re-parsing it.
-func rateLimitKey(r *http.Request, trustedProxyNet *net.IPNet) (key string, userID int, tokenValid bool) {
-	clientIP := authentication.GetClientIP(r, trustedProxyNet)
-
+func rateLimitKey(r *http.Request, clientIP string) (key string, userID int, tokenValid bool) {
 	cookie, err := r.Cookie("Authorization")
 	if err != nil {
 		return clientIP, 0, false
@@ -87,27 +85,24 @@ func CheckJwtToken(next http.HandlerFunc, trustedProxyNet *net.IPNet, redisClien
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		ctx := r.Context()
+		clientIP, ipErr := authentication.GetClientIP(r, trustedProxyNet)
 
-		//pick the rate limit identity: client IP while unauthenticated,
-		//verified userID once the JWT checks out.
-		rateKey, userID, tokenValid := rateLimitKey(r, trustedProxyNet)
+		if ipErr != nil {
+			log.Println("Error while executing GetClientIP()")
 
-		// Proxy gate applies only when the bucket key is the IP (no valid
-		// JWT). A verified logged-in user buckets by userID and skips this
-		// gate: stolen-token + direct-access bypass is accepted by design
-		// because a verified account is far less likely to probe this way.
-		// Invalid/missing-token traffic must still come via nginx/loopback.
-		if !tokenValid && !authentication.IsTrustedProxy(r, trustedProxyNet) {
-			log.Println("blocked direct/untrusted-proxy request from ", r.RemoteAddr)
 			WriteJSONError(
 				w,
 				http.StatusForbidden,
-				"blocked direct/untrusted-proxy request",
-				"NICE TRY SON",
-				"error writing proxy block response:",
+				"GetClientIP rejected: untrusted proxy or invalid IP", // detailed, for your logs only
+				"forbidden", // vague, safe, sent to client
+				"error writing forbidden response:",
 			)
 			return
 		}
+
+		//pick the rate limit identity: client IP while unauthenticated,
+		//verified userID once the JWT checks out.
+		rateKey, userID, tokenValid := rateLimitKey(r, clientIP)
 
 		//count the request against that identity's token bucket
 		allowed, remainingToken, err := redisInternal.Allow(ctx, redisClient, rateKey, cost)

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,76 +18,15 @@ import (
 	"github.com/mattthew/sclera/internal/hashing"
 	"github.com/mattthew/sclera/internal/middleware"
 	"github.com/mattthew/sclera/internal/models"
-	"github.com/mattthew/sclera/internal/redisInternal"
+	helpers "github.com/mattthew/sclera/internal/usefulHelpers"
 	userhandling "github.com/mattthew/sclera/tempFrontend/userHandling"
 	"github.com/redis/go-redis/v9"
 	"github.com/resend/resend-go/v3"
 )
 
-// random comment to run ci pipeline
-
-func ThrowHTTPErrAndLog(logText string, logErr error, errorText string, w http.ResponseWriter, httpStat int) {
-	if logErr != nil {
-		log.Println(logText, logErr)
-	} else {
-		log.Println(logText)
-	}
-
-	http.Error(w, errorText, httpStat)
-}
-
-func VerifyHTTPMethod(w http.ResponseWriter, r *http.Request, allowedMethod string) bool {
-	if r.Method != allowedMethod {
-		// Log and throw the error dynamically
-		errMsg := fmt.Sprintf("The method %s is UNAUTHORIZED. Expected %s.", r.Method, allowedMethod)
-		ThrowHTTPErrAndLog("unauthorized method!", nil, errMsg, w, http.StatusMethodNotAllowed)
-		return false // Validation failed
-	}
-	return true // Validation passed
-}
-
-// WithIPRateLimit wraps a NON-middleware (pre-auth) handler so its requests
-// are bucketed against the caller's client IP via redisInternal.Allow().
-// Authenticated endpoints go through middleware.CheckJwtToken instead, which
-// buckets by verified userID. cost comes from the redisInternal token constants.
-func WithIPRateLimit(next http.HandlerFunc, redisClient *redis.Client, trustedProxyNet *net.IPNet, cost float64) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Pre-auth traffic is always IP-bucketed, so require the verified
-		// nginx proxy (or loopback for local `air` dev). Block before
-		// touching Redis so rogue direct hits never burn buckets.
-		if !authentication.IsTrustedProxy(r, trustedProxyNet) {
-			log.Println("blocked direct/untrusted-proxy request from ", r.RemoteAddr)
-			authentication.WriteProxyBlockHTML(w, r)
-			return
-		}
-
-		clientIP := authentication.GetClientIP(r, trustedProxyNet)
-
-		allowed, remainingTokens, err := redisInternal.Allow(r.Context(), redisClient, clientIP, cost)
-
-		if err != nil {
-			if errors.Is(err, redisInternal.ErrUnexpectedScriptError) {
-				ThrowHTTPErrAndLog("rate limiter script error", redisInternal.ErrUnexpectedScriptError, "internal server error", w, http.StatusInternalServerError)
-				return
-			}
-			ThrowHTTPErrAndLog("error allowing request: ", err, "internal server error", w, http.StatusInternalServerError)
-			return
-		}
-
-		if !allowed {
-			ThrowHTTPErrAndLog("too many requests from this IP", nil, "too many requests", w, http.StatusTooManyRequests)
-			return
-		}
-
-		log.Println("remainingTokens for IP ", clientIP, ": ", remainingTokens)
-
-		next(w, r)
-	}
-}
-
 func CallGetUser(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodGet)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodGet)
 		if !stat {
 			return
 		}
@@ -96,17 +34,17 @@ func CallGetUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 		userID, ok := ctx.Value(middleware.UserIDkey).(int) //this .(int) is NOT typecasting the value of type any, it is there to TYPECHECK what the actual type of the type any value is
 		if !ok {
-			ThrowHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
+			helpers.ThrowHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
 			return
 		}
 		stat, user, err := handlers.HandleGetUserData(ctx, pool, userID) // send the user context, database pool and id to check existance
 
 		if err != nil {
 			if errors.Is(err, handlers.ErrNoUserFound) {
-				ThrowHTTPErrAndLog("No user with this id exists in the database, err:", handlers.ErrNoUserFound, "The id has not been used to create an user.", w, http.StatusBadRequest)
+				helpers.ThrowHTTPErrAndLog("No user with this id exists in the database, err:", handlers.ErrNoUserFound, "The id has not been used to create an user.", w, http.StatusBadRequest)
 				return
 			}
-			ThrowHTTPErrAndLog("an error occured while getting user data, err: ", err, "error finding user", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("an error occured while getting user data, err: ", err, "error finding user", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -127,7 +65,7 @@ func CallGetUser(pool *pgxpool.Pool) http.HandlerFunc {
 		jsonErr := json.NewEncoder(w).Encode(user)
 
 		if jsonErr != nil {
-			ThrowHTTPErrAndLog("error occured while trying to send json to header, error: ", jsonErr, "Your token was not successfully send to the header.", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("error occured while trying to send json to header, error: ", jsonErr, "Your token was not successfully send to the header.", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -185,7 +123,7 @@ func handleTokenEdgeCase(w http.ResponseWriter, r *http.Request) int {
 
 	_, writeErr := w.Write([]byte("You have arleady logged in."))
 	if writeErr != nil {
-		ThrowHTTPErrAndLog("error while trying to write response", writeErr, "An error occured while trying to write the response", w, http.StatusInternalServerError)
+		helpers.ThrowHTTPErrAndLog("error while trying to write response", writeErr, "An error occured while trying to write the response", w, http.StatusInternalServerError)
 		return invalidAuthorizationToken // internal error
 	}
 
@@ -205,7 +143,7 @@ func renderComponent(w http.ResponseWriter, r *http.Request, component templ.Com
 	renderErr := component.Render(r.Context(), w)
 
 	if renderErr != nil {
-		ThrowHTTPErrAndLog("failed to render template", renderErr, "Internal server error", w, http.StatusInternalServerError)
+		helpers.ThrowHTTPErrAndLog("failed to render template", renderErr, "Internal server error", w, http.StatusInternalServerError)
 		return
 	}
 }
@@ -237,7 +175,7 @@ func CallNewUser() http.HandlerFunc {
 func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodPost)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodPost)
 		if !stat {
 			return
 		}
@@ -246,7 +184,7 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 		err := r.ParseForm()
 
 		if err != nil {
-			ThrowHTTPErrAndLog("failed parsing the html form", err, "Your data was not successfully handled by the server", w, http.StatusBadRequest)
+			helpers.ThrowHTTPErrAndLog("failed parsing the html form", err, "Your data was not successfully handled by the server", w, http.StatusBadRequest)
 			return
 		}
 
@@ -270,7 +208,7 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 		hash, hashErr := hashing.HashPassword(strings.TrimSpace(r.FormValue("password")))
 
 		if hashErr != nil {
-			ThrowHTTPErrAndLog("failed hashing the password", hashErr, "Your password was not successfully hashed by the server", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("failed hashing the password", hashErr, "Your password was not successfully hashed by the server", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -279,7 +217,7 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 		//check if the values in that slice is under the max limit of 5 or no
 		if len(r.Form["items"]) > 5 || len(r.Form["items"]) == 0 {
-			ThrowHTTPErrAndLog("too many or no topics selected", nil, "Select no more than 5 maxium topics and no less than 1.", w, http.StatusBadRequest)
+			helpers.ThrowHTTPErrAndLog("too many or no topics selected", nil, "Select no more than 5 maxium topics and no less than 1.", w, http.StatusBadRequest)
 			return
 		}
 		// add the slice in the the user struct
@@ -290,17 +228,17 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 		if err != nil {
 			if errors.Is(err, handlers.ErrUserEmailAlreadyTaken) {
-				ThrowHTTPErrAndLog("provided email is already taken", err, "The email you are trying to use is already in use.", w, http.StatusBadRequest)
+				helpers.ThrowHTTPErrAndLog("provided email is already taken", err, "The email you are trying to use is already in use.", w, http.StatusBadRequest)
 				return
 			}
-			ThrowHTTPErrAndLog("error occured whilist inserting userdata", err, "An error occured while trying to create your account.", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("error occured whilist inserting userdata", err, "An error occured while trying to create your account.", w, http.StatusInternalServerError)
 			return
 		}
 
 		//create an token after the database work is done and add the token to users "Authentication" header
 		tokenString, err := authentication.CreateToken(newID)
 		if err != nil {
-			ThrowHTTPErrAndLog("Error occured while making an JWT token using the created users ID", err, "Error occured while creating an token for you.", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("Error occured while making an JWT token using the created users ID", err, "Error occured while creating an token for you.", w, http.StatusInternalServerError)
 			return
 		}
 		//adds the token into the cookie
@@ -329,7 +267,7 @@ func CallCreateUser(pool *pgxpool.Pool) http.HandlerFunc {
 // same logic as CallNewUser
 func CallLoginUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodGet)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodGet)
 		if !stat {
 			return
 		}
@@ -341,7 +279,7 @@ func CallLoginUser() http.HandlerFunc {
 // process the html form data and return accordingly
 func CallVerifyUser(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodPost)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodPost)
 		if !stat {
 			return
 		}
@@ -350,7 +288,7 @@ func CallVerifyUser(pool *pgxpool.Pool) http.HandlerFunc {
 		parseErr := r.ParseForm()
 
 		if parseErr != nil {
-			ThrowHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -361,24 +299,24 @@ func CallVerifyUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 		if err != nil {
 			if errors.Is(err, handlers.ErrNoUserFound) {
-				ThrowHTTPErrAndLog("No user with this email exists in database", handlers.ErrNoUserFound, "The email provided is INVALID", w, http.StatusBadRequest)
+				helpers.ThrowHTTPErrAndLog("No user with this email exists in database", handlers.ErrNoUserFound, "The email provided is INVALID", w, http.StatusBadRequest)
 				return
 			}
-			ThrowHTTPErrAndLog("An error occured while trying to fetch data from db", err, "An error occured while trying to fetch your data form the database", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("An error occured while trying to fetch data from db", err, "An error occured while trying to fetch your data form the database", w, http.StatusInternalServerError)
 			return
 		}
 
 		success := hashing.VerifyPassword(password, userData.Password) // comparing the user given pass with the hashed pass intially created upon accoutn creation
 
 		if !success {
-			ThrowHTTPErrAndLog("The password provided is incorrect", nil, "The password is INCORRECT", w, http.StatusBadRequest)
+			helpers.ThrowHTTPErrAndLog("The password provided is incorrect", nil, "The password is INCORRECT", w, http.StatusBadRequest)
 			return
 		}
 
 		tokenString, err := authentication.CreateToken(userData.Id)
 
 		if err != nil {
-			ThrowHTTPErrAndLog("Error occured while making an JWT token using the created users ID", err, "Error occured while creating an token for you.", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("Error occured while making an JWT token using the created users ID", err, "Error occured while creating an token for you.", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -403,7 +341,7 @@ func CallVerifyUser(pool *pgxpool.Pool) http.HandlerFunc {
 // put this thru the middleware as user cant logout if hes not logged in at the first place, same for the /deleteAccount api
 func CallLogoutUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodPost)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodPost)
 		if !stat {
 			return
 		}
@@ -411,7 +349,7 @@ func CallLogoutUser() http.HandlerFunc {
 		_, err := r.Cookie("Authorization")
 		if err != nil {
 			log.Println("", err)
-			ThrowHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", err, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", err, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
 			//always throws an http.Error
 			return
 			//why do i need a return here
@@ -428,7 +366,7 @@ func CallLogoutUser() http.HandlerFunc {
 // call a database look up the uses existance and perform the deletion of both the user data and cookie
 func CallDeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodPost)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodPost)
 		if !stat {
 			return
 		}
@@ -436,7 +374,7 @@ func CallDeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 		userID, ok := ctx.Value(middleware.UserIDkey).(int) //this .(int) is NOT typecasting the value of type any, it is there to TYPECHECK what the actual type of the type any value is
 		if !ok {
-			ThrowHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
+			helpers.ThrowHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
 			return
 		}
 		_, err := handlers.HandleUserDataDeletion(ctx, pool, userID)
@@ -444,17 +382,17 @@ func CallDeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
 
 		if err != nil {
 			if errors.Is(err, handlers.ErrNoUserFound) {
-				ThrowHTTPErrAndLog("No user with this ID exists in database", handlers.ErrNoUserFound, "The ID provided is INVALID", w, http.StatusBadRequest)
+				helpers.ThrowHTTPErrAndLog("No user with this ID exists in database", handlers.ErrNoUserFound, "The ID provided is INVALID", w, http.StatusBadRequest)
 				return
 			}
-			ThrowHTTPErrAndLog("An error occured while deleting user", handlers.ErrNoUserFound, "An error occured trying to delete your account", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("An error occured while deleting user", handlers.ErrNoUserFound, "An error occured trying to delete your account", w, http.StatusInternalServerError)
 			return
 		}
 
 		_, cookieError := r.Cookie("Authorization")
 		if cookieError != nil {
 			log.Println("", err)
-			ThrowHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", err, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", err, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
 			return
 		}
 		instantCookieDeletion(w, "Authorization", "/")
@@ -466,7 +404,7 @@ func CallDeleteUser(pool *pgxpool.Pool) http.HandlerFunc {
 // loads the templ page to the user
 func CallUpdateUserClientSide(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodGet)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodGet)
 		if !stat {
 			return
 		}
@@ -479,10 +417,10 @@ func CallUpdateUserClientSide(pool *pgxpool.Pool) http.HandlerFunc {
 
 		if err != nil {
 			if errors.Is(err, handlers.ErrNoUserFound) {
-				ThrowHTTPErrAndLog("No user with this id exists in the database, err:", handlers.ErrNoUserFound, "The id has not been used to create an user.", w, http.StatusBadRequest)
+				helpers.ThrowHTTPErrAndLog("No user with this id exists in the database, err:", handlers.ErrNoUserFound, "The id has not been used to create an user.", w, http.StatusBadRequest)
 				return
 			}
-			ThrowHTTPErrAndLog("an error occured while getting user data, err: ", err, "error finding user", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("an error occured while getting user data, err: ", err, "error finding user", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -505,7 +443,7 @@ func CallUpdateUserClientSide(pool *pgxpool.Pool) http.HandlerFunc {
 // should make sure the given pass is right
 func CallUpdateUserServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodPost)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodPost)
 		if !stat {
 			return
 		}
@@ -513,14 +451,14 @@ func CallUpdateUserServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 		ctx := r.Context()
 		userID, ok := ctx.Value(middleware.UserIDkey).(int) //this .(int) is NOT typecasting the value of type any, it is there to TYPECHECK what the actual type of the type any value is
 		if !ok {
-			ThrowHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
+			helpers.ThrowHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
 			return
 		}
 
 		parseErr := r.ParseForm()
 
 		if parseErr != nil {
-			ThrowHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -531,10 +469,10 @@ func CallUpdateUserServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 
 		if err != nil {
 			if errors.Is(err, handlers.ErrNoUserFound) {
-				ThrowHTTPErrAndLog("user with this id does not exists", handlers.ErrNoUserFound, "User ID is INVALID", w, http.StatusBadRequest)
+				helpers.ThrowHTTPErrAndLog("user with this id does not exists", handlers.ErrNoUserFound, "User ID is INVALID", w, http.StatusBadRequest)
 				return
 			}
-			ThrowHTTPErrAndLog("An error occcured while fetching users hashed password", err, "An error occured whilist fetching your password", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("An error occcured while fetching users hashed password", err, "An error occured whilist fetching your password", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -542,7 +480,7 @@ func CallUpdateUserServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 		name := strings.TrimSpace(r.FormValue("name"))
 
 		if name == "" {
-			ThrowHTTPErrAndLog("Name is empty", nil, "Name cannot be empty", w, http.StatusBadRequest)
+			helpers.ThrowHTTPErrAndLog("Name is empty", nil, "Name cannot be empty", w, http.StatusBadRequest)
 			return
 		}
 
@@ -553,13 +491,13 @@ func CallUpdateUserServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 		success := hashing.VerifyPassword(unhashedPassword, hashedPassword) // comparing the user given pass with the hashed pass intially created upon accoutn creation
 
 		if !success {
-			ThrowHTTPErrAndLog("The password provided is incorrect", nil, "The password is INCORRECT", w, http.StatusBadRequest)
+			helpers.ThrowHTTPErrAndLog("The password provided is incorrect", nil, "The password is INCORRECT", w, http.StatusBadRequest)
 			return
 		}
 
 		//check if the values in that slice is under the max limit of 5 or no
 		if len(r.Form["items"]) > 5 || len(r.Form["items"]) == 0 {
-			ThrowHTTPErrAndLog("too many or no topics selected", nil, "Select no more than 5 maxium topics and no less than 1.", w, http.StatusBadRequest)
+			helpers.ThrowHTTPErrAndLog("too many or no topics selected", nil, "Select no more than 5 maxium topics and no less than 1.", w, http.StatusBadRequest)
 			return
 		}
 		// add the slice in the the user struct
@@ -572,10 +510,10 @@ func CallUpdateUserServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 
 		if userDataUpdatingErr != nil {
 			if errors.Is(userDataUpdatingErr, handlers.ErrNoUserFound) {
-				ThrowHTTPErrAndLog("user with this id does not exists", handlers.ErrNoUserFound, "User ID is INVALID", w, http.StatusBadRequest)
+				helpers.ThrowHTTPErrAndLog("user with this id does not exists", handlers.ErrNoUserFound, "User ID is INVALID", w, http.StatusBadRequest)
 				return
 			}
-			ThrowHTTPErrAndLog("An error occcured while updating users account", userDataUpdatingErr, "An error occured whilist updating your account", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("An error occcured while updating users account", userDataUpdatingErr, "An error occured whilist updating your account", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -637,7 +575,7 @@ func checkEmailAndIDRelation(userGivenEmail string, ctx context.Context, pool *p
 // this is /sendVerificationMail
 func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, redisClient *redis.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodPost)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodPost)
 		if !stat {
 			return
 		}
@@ -647,7 +585,7 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 		var userEmail string
 
 		if parseErr != nil {
-			ThrowHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -664,13 +602,13 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 				userEmail = strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 
 				if userEmail == "" {
-					ThrowHTTPErrAndLog("provided email is empty", nil, "Please fill up the email field.", w, http.StatusBadRequest)
+					helpers.ThrowHTTPErrAndLog("provided email is empty", nil, "Please fill up the email field.", w, http.StatusBadRequest)
 					return
 				}
 				emailCheckErr := checkEmailAndIDRelation(userEmail, ctx, pool)
 
 				if emailCheckErr != nil {
-					ThrowHTTPErrAndLog("Email is not connected to users ID", emailCheckErr, "Please provide the correct email.", w, http.StatusBadRequest)
+					helpers.ThrowHTTPErrAndLog("Email is not connected to users ID", emailCheckErr, "Please provide the correct email.", w, http.StatusBadRequest)
 					return
 				}
 
@@ -678,7 +616,7 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 
 			} else {
 				log.Println("", cookieErr)
-				ThrowHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", cookieErr, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
+				helpers.ThrowHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", cookieErr, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
 				return
 			}
 
@@ -691,10 +629,10 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 
 		if otpCreationError != nil {
 			if errors.Is(otpCreationError, authentication.ErrOTPcoolDown) {
-				ThrowHTTPErrAndLog("resending OTP too fast, wait till the cooldown ends.", authentication.ErrOTPcoolDown, "Please wait before requesting a new OTP", w, http.StatusBadRequest)
+				helpers.ThrowHTTPErrAndLog("resending OTP too fast, wait till the cooldown ends.", authentication.ErrOTPcoolDown, "Please wait before requesting a new OTP", w, http.StatusBadRequest)
 				return
 			}
-			ThrowHTTPErrAndLog("An error occcured while creating users OTP", otpCreationError, "An error occured whilist creating your OTP", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("An error occcured while creating users OTP", otpCreationError, "An error occured whilist creating your OTP", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -711,7 +649,7 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 		// Send the email
 		sent, err := resendClient.Emails.Send(emailConfig)
 		if err != nil {
-			ThrowHTTPErrAndLog("Error sending email: %v\n", err, "An error occured while trying to send you the email", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("Error sending email: %v\n", err, "An error occured while trying to send you the email", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -739,7 +677,7 @@ func CallSendVerificationMail(resendClient *resend.Client, pool *pgxpool.Pool, r
 // this is /inputOTP
 func CallVerifyOTPclientSide() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodPost)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodPost)
 		if !stat {
 			return
 		}
@@ -767,7 +705,7 @@ func instantCookieDeletion(w http.ResponseWriter, name string, path string) {
 // this is /veriyOTP
 func CallVerifyOTPserverSide(redisClient *redis.Client, pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodPost)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodPost)
 		if !stat {
 			return
 		}
@@ -776,18 +714,18 @@ func CallVerifyOTPserverSide(redisClient *redis.Client, pool *pgxpool.Pool) http
 		userEmail, err := r.Cookie("Email")
 		if err != nil {
 			log.Println("", err)
-			ThrowHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", err, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("An error occured whilist fetching the cookie form users request, err: ", err, "Error occured while fetching your Auth cookie.", w, http.StatusInternalServerError)
 			return
 		}
 
 		if parseErr != nil {
-			ThrowHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
 			return
 		}
 		userInputOTP := r.FormValue("otp")
 
 		if userInputOTP == "" {
-			ThrowHTTPErrAndLog("otp field missing from request", errors.New("empty otp"), "Please enter your verification code", w, http.StatusBadRequest)
+			helpers.ThrowHTTPErrAndLog("otp field missing from request", errors.New("empty otp"), "Please enter your verification code", w, http.StatusBadRequest)
 			return
 		}
 
@@ -802,10 +740,10 @@ func CallVerifyOTPserverSide(redisClient *redis.Client, pool *pgxpool.Pool) http
 				return
 			}
 			if errors.Is(verificationErr, authentication.ErrInvalidOTP) {
-				ThrowHTTPErrAndLog("invalid OTP provided by the user", authentication.ErrInvalidOTP, "invalid OTP", w, http.StatusBadRequest)
+				helpers.ThrowHTTPErrAndLog("invalid OTP provided by the user", authentication.ErrInvalidOTP, "invalid OTP", w, http.StatusBadRequest)
 				return
 			}
-			ThrowHTTPErrAndLog("An error occcured while verifying users OTP", verificationErr, "An error occured whilist verifying your OTP", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("An error occcured while verifying users OTP", verificationErr, "An error occured whilist verifying your OTP", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -819,17 +757,17 @@ func CallVerifyOTPserverSide(redisClient *redis.Client, pool *pgxpool.Pool) http
 
 		if idErr != nil {
 			if errors.Is(idErr, handlers.ErrNoUserFound) {
-				ThrowHTTPErrAndLog("No user with this email exists in database", handlers.ErrNoUserFound, "The email provided is INVALID", w, http.StatusBadRequest)
+				helpers.ThrowHTTPErrAndLog("No user with this email exists in database", handlers.ErrNoUserFound, "The email provided is INVALID", w, http.StatusBadRequest)
 				return
 			}
-			ThrowHTTPErrAndLog("An error occured while trying to fetch userID from db", idErr, "An error occured while trying to fetch your ID form the database", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("An error occured while trying to fetch userID from db", idErr, "An error occured while trying to fetch your ID form the database", w, http.StatusInternalServerError)
 			return
 		}
 
 		tokenString, err := authentication.CreateToken(userID)
 
 		if err != nil {
-			ThrowHTTPErrAndLog("Error occured while making an JWT token using the created users ID", err, "Error occured while creating an token for you.", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("Error occured while making an JWT token using the created users ID", err, "Error occured while creating an token for you.", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -856,7 +794,7 @@ func CallVerifyOTPserverSide(redisClient *redis.Client, pool *pgxpool.Pool) http
 // check if the passwords are same or not, if same dont allow user to change it BUT KEEP THE FUNC RUNNING, if the pass is diff then let user change it
 func CallUpdateUserPasswordServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodPost)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodPost)
 		if !stat {
 			return
 		}
@@ -864,13 +802,13 @@ func CallUpdateUserPasswordServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 		ctx := r.Context()
 		userID, ok := ctx.Value(middleware.UserIDkey).(int) //this .(int) is NOT typecasting the value of type any, it is there to TYPECHECK what the actual type of the type any value is
 		if !ok {
-			ThrowHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
+			helpers.ThrowHTTPErrAndLog("No user user id found in the context value", nil, "No user ID has been found linked to your account", w, http.StatusBadRequest)
 			return
 		}
 		parseErr := r.ParseForm()
 
 		if parseErr != nil {
-			ThrowHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("failed parsing the html form", parseErr, "An error occured while trying to parse the html form", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -880,7 +818,7 @@ func CallUpdateUserPasswordServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 		hashedPassword, hashingErr := hashing.HashPassword(plaintTextPassword)
 
 		if hashingErr != nil {
-			ThrowHTTPErrAndLog("failed hashing the password", hashingErr, "Your password was not successfully hashed by the server", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("failed hashing the password", hashingErr, "Your password was not successfully hashed by the server", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -889,10 +827,10 @@ func CallUpdateUserPasswordServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 
 		if passUpdateErr != nil {
 			if errors.Is(passUpdateErr, handlers.ErrNoUserFound) {
-				ThrowHTTPErrAndLog("user with this id does not exists", handlers.ErrNoUserFound, "User ID is INVALID", w, http.StatusBadRequest)
+				helpers.ThrowHTTPErrAndLog("user with this id does not exists", handlers.ErrNoUserFound, "User ID is INVALID", w, http.StatusBadRequest)
 				return
 			}
-			ThrowHTTPErrAndLog("An error occcured while updating users password", passUpdateErr, "An error occured whilist updating your password", w, http.StatusInternalServerError)
+			helpers.ThrowHTTPErrAndLog("An error occcured while updating users password", passUpdateErr, "An error occured whilist updating your password", w, http.StatusInternalServerError)
 			return
 		}
 
@@ -904,7 +842,7 @@ func CallUpdateUserPasswordServerSide(pool *pgxpool.Pool) http.HandlerFunc {
 // this is /updateUsersPassword
 func CallUpdateUserPasswordClientSide() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		stat := VerifyHTTPMethod(w, r, http.MethodGet)
+		stat := helpers.VerifyHTTPMethod(w, r, http.MethodGet)
 		if !stat {
 			return
 		}
